@@ -13,10 +13,17 @@ import {
   setDoc as firestoreSetDoc,
   updateDoc as firestoreUpdateDoc
 } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const realAuth = getAuth(app);
+
+// Sign in anonymously immediately to satisfy secure Firestore rules (request.auth != null)
+export const authPromise = signInAnonymously(realAuth).catch((err) => {
+  console.error('Anonymous auth setup failed:', err);
+});
 
 // Custom Auth Mock to bridge the existing session UI seamlessly
 class AuthMock {
@@ -138,6 +145,7 @@ export const serverTimestamp = firestoreServerTimestamp;
 // Wrapped Firestore read/write operations to inject the mandatory error handlers
 export async function getDoc(docRef: any) {
   try {
+    await authPromise;
     return await firestoreGetDoc(docRef);
   } catch (err) {
     handleFirestoreError(err, OperationType.GET, docRef?.path || null);
@@ -147,6 +155,7 @@ export async function getDoc(docRef: any) {
 
 export async function getDocs(queryObj: any) {
   try {
+    await authPromise;
     return await firestoreGetDocs(queryObj);
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, queryObj?.path || null);
@@ -156,6 +165,7 @@ export async function getDocs(queryObj: any) {
 
 export async function setDoc(docRef: any, data: any, options?: any) {
   try {
+    await authPromise;
     if (options) {
       return await firestoreSetDoc(docRef, data, options);
     }
@@ -168,6 +178,7 @@ export async function setDoc(docRef: any, data: any, options?: any) {
 
 export async function updateDoc(docRef: any, data: any) {
   try {
+    await authPromise;
     return await firestoreUpdateDoc(docRef, data);
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, docRef?.path || null);
@@ -177,6 +188,7 @@ export async function updateDoc(docRef: any, data: any) {
 
 export async function runTransaction(dbInstance: any, callback: (transaction: any) => Promise<any>) {
   try {
+    await authPromise;
     return await firestoreRunTransaction(dbInstance, callback);
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, 'transaction');
