@@ -46,6 +46,23 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [templateSuccess, setTemplateSuccess] = useState<string | null>(null);
 
+  // --- EDIT & UNPUBLISH CONFIRM STATES ---
+  const [isUnpublishConfirmOpen, setIsUnpublishConfirmOpen] = useState(false);
+  const [templateToUnpublishAndEdit, setTemplateToUnpublishAndEdit] = useState<DocumentTemplate | null>(null);
+  
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<DocumentTemplate | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editInitials, setEditInitials] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // --- 2-STAGE PUBLISH STATES ---
+  const [publishStage, setPublishStage] = useState(0); // 0 = inactive, 1 = Stage 1, 2 = Stage 2
+  const [templateToPublish, setTemplateToPublish] = useState<DocumentTemplate | null>(null);
+  const [isPublishingThroughStages, setIsPublishingThroughStages] = useState(false);
+
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -280,16 +297,125 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
   };
 
   const handleTogglePublish = async (template: DocumentTemplate) => {
+    if (!template.published) {
+      // Start 2-stage confirmation flow instead of toggling directly
+      setTemplateToPublish(template);
+      setPublishStage(1);
+      return;
+    }
+
+    // Unpublishing is direct
     try {
       const templateDocRef = doc(db, 'document_templates', template.id);
       await runTransaction(db, async (transaction) => {
         transaction.update(templateDocRef, {
-          published: !template.published
+          published: false
         });
       });
       fetchTemplates();
     } catch (err) {
-      console.error('Error toggling template state:', err);
+      console.error('Error unpublishing template:', err);
+    }
+  };
+
+  // Click handler for Edit icon
+  const handleEditClick = (template: DocumentTemplate) => {
+    if (template.published) {
+      setTemplateToUnpublishAndEdit(template);
+      setIsUnpublishConfirmOpen(true);
+    } else {
+      openEditModal(template);
+    }
+  };
+
+  // Prepares states for editing template
+  const openEditModal = (template: DocumentTemplate) => {
+    setEditingTemplate(template);
+    setEditName(template.name);
+    setEditInitials(template.initials);
+    setEditDescription(template.description || '');
+    setEditError(null);
+    setIsEditModalOpen(true);
+  };
+
+  // Confirms unpublishing to begin editing
+  const handleConfirmUnpublishAndEdit = async () => {
+    if (!templateToUnpublishAndEdit) return;
+    try {
+      const templateDocRef = doc(db, 'document_templates', templateToUnpublishAndEdit.id);
+      await runTransaction(db, async (transaction) => {
+        transaction.update(templateDocRef, {
+          published: false
+        });
+      });
+      setIsUnpublishConfirmOpen(false);
+      openEditModal(templateToUnpublishAndEdit);
+      setTemplateToUnpublishAndEdit(null);
+      fetchTemplates();
+    } catch (err: any) {
+      console.error('Error unpublishing for edit:', err);
+      alert('Failed to unpublish: ' + err.message);
+    }
+  };
+
+  // Saves updated template fields to Firestore
+  const handleSaveEdit = async () => {
+    if (!editingTemplate) return;
+    if (!editName.trim() || !editInitials.trim()) {
+      setEditError('Please enter a Form Name and Form Initials.');
+      return;
+    }
+    const cleanInitials = editInitials.trim().toUpperCase();
+    if (cleanInitials.length < 2 || cleanInitials.length > 4) {
+      setEditError('Form Initials must be between 2 and 4 characters.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError(null);
+
+    try {
+      const templateDocRef = doc(db, 'document_templates', editingTemplate.id);
+      await runTransaction(db, async (transaction) => {
+        transaction.update(templateDocRef, {
+          name: editName.trim(),
+          initials: cleanInitials,
+          description: editDescription.trim(),
+        });
+      });
+
+      setIsEditModalOpen(false);
+      setEditingTemplate(null);
+      setSuccess(`Form requirement "${cleanInitials}" was successfully updated.`);
+      fetchTemplates();
+    } catch (err: any) {
+      console.error('Error saving edits:', err);
+      setEditError(err.message || 'Failed to update requirement.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // Final Stage 2 publish activation
+  const handleFinalPublish = async () => {
+    if (!templateToPublish) return;
+    setIsPublishingThroughStages(true);
+    try {
+      const templateDocRef = doc(db, 'document_templates', templateToPublish.id);
+      await runTransaction(db, async (transaction) => {
+        transaction.update(templateDocRef, {
+          published: true
+        });
+      });
+      setSuccess(`Form requirement "${templateToPublish.initials}" is now published and active!`);
+      setPublishStage(0);
+      setTemplateToPublish(null);
+      fetchTemplates();
+    } catch (err: any) {
+      console.error('Error during final publish:', err);
+      alert('Publishing failed: ' + err.message);
+    } finally {
+      setIsPublishingThroughStages(false);
     }
   };
 
@@ -621,13 +747,25 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className={`px-2.5 py-1 text-xs font-bold font-mono tracking-wider rounded-lg border ${
-                        isSelected 
-                          ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400' 
-                          : 'bg-zinc-950 border-zinc-800 text-indigo-400/90'
-                      }`}>
-                        {temp.initials}
-                      </span>
+                      <div className="flex items-center space-x-2">
+                        <span className={`px-2.5 py-1 text-xs font-bold font-mono tracking-wider rounded-lg border ${
+                          isSelected 
+                            ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400' 
+                            : 'bg-zinc-950 border-zinc-800 text-indigo-400/90'
+                        }`}>
+                          {temp.initials}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditClick(temp);
+                          }}
+                          className="p-1 rounded-lg border border-zinc-800 bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-indigo-400 hover:border-indigo-500/40 transition-all cursor-pointer shadow-sm"
+                          title="Edit form requirement"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                       {isSelected && (
                         <span className="text-[10px] font-bold text-indigo-400 font-mono flex items-center space-x-1">
                           <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-pulse" />
@@ -664,53 +802,62 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
         {/* Sidebar Left Column containing stack of cards */}
         <div className="lg:col-span-1 space-y-6">
           
-          {/* Deliver New Document Card (Manager Mode) */}
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 shadow-xl h-fit backdrop-blur-xs space-y-4">
-            <div className="flex items-center space-x-2.5 pb-3.5 border-b border-zinc-800/80">
-              <div className="bg-indigo-500/10 text-indigo-400 p-2 rounded-lg border border-indigo-500/20">
-                <Upload className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-bold text-zinc-100 text-sm tracking-wide">Manager Upload</h2>
-                <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Uploader tool for published requirements</p>
-              </div>
-            </div>
+          {/* Deliver New Document Card (Manager Mode - Identical to Employee UI) */}
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 shadow-xl h-fit backdrop-blur-xs space-y-4">
+            {(() => {
+              const activeUploadTemplate = templates.find(t => t.initials.toUpperCase() === formInitials.toUpperCase()) || null;
+              return (
+                <div className="flex items-center space-x-2.5 pb-4 border-b border-zinc-800/80">
+                  <div className="bg-indigo-500/10 text-indigo-400 p-2 rounded-lg border border-indigo-500/20">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-zinc-100 text-sm tracking-wide">
+                      {formInitials ? `Deliver Form: ${formInitials.toUpperCase()}` : 'Deliver Document'}
+                    </h2>
+                    <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                      {activeUploadTemplate ? `Targeting: ${activeUploadTemplate.name}` : 'Select a published form requirement'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {uploadError && (
-              <div className="p-3 rounded-xl bg-rose-950/25 border border-rose-900/50 text-rose-400 text-xs flex items-start space-x-2 leading-relaxed font-sans">
+              <div className="p-3.5 rounded-xl bg-rose-950/25 border border-rose-900/50 text-rose-400 text-xs flex items-start space-x-2 leading-relaxed">
                 <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <span>{uploadError}</span>
               </div>
             )}
 
             {uploadSuccess && (
-              <div className="p-3 rounded-xl bg-emerald-950/25 border border-emerald-900/50 text-emerald-400 text-xs flex items-start space-x-2 leading-relaxed font-sans">
+              <div className="p-3.5 rounded-xl bg-emerald-950/25 border border-emerald-900/50 text-emerald-400 text-xs flex items-start space-x-2 leading-relaxed">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <span>{uploadSuccess}</span>
               </div>
             )}
 
             {templates.filter(t => t.published).length === 0 ? (
-              <div className="p-4 text-center bg-zinc-950/40 rounded-xl border border-zinc-850 space-y-2">
-                <AlertCircle className="w-6 h-6 text-amber-500 mx-auto" />
-                <h3 className="text-zinc-300 font-bold text-xs font-mono">No Published Forms</h3>
-                <p className="text-zinc-500 text-[10px] leading-relaxed">
-                  You can only upload documents once you publish a requirement template. Use the form requirement publisher below to create one first.
+              <div className="p-5 text-center bg-zinc-950/60 rounded-xl border border-zinc-850 space-y-3">
+                <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
+                <h3 className="text-zinc-200 font-bold text-xs">Waiting for Manager Publication</h3>
+                <p className="text-zinc-400 text-[11px] leading-relaxed">
+                  You can only submit documents for templates published by your manager. Please wait for a manager to publish a requirement.
                 </p>
               </div>
             ) : (
               <form onSubmit={handleUploadSubmit} className="space-y-4" id="manager-upload-form">
                 
-                {/* File selection stage */}
+                {/* Drag & Drop File Upload Stage */}
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2 font-mono">
                     Document File
                   </label>
                   <div
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
-                    className={`relative border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all duration-200 ${
+                    className={`relative border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center transition-all duration-200 ${
                       isDragging
                         ? 'border-indigo-500 bg-indigo-500/10'
                         : file
@@ -720,75 +867,65 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
                   >
                     <input
                       type="file"
+                      id="manager-file-input"
                       onChange={handleFileChange}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       disabled={uploading}
                     />
                     
                     {file ? (
-                      <div className="space-y-1">
-                        <div className="mx-auto w-8 h-8 bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 rounded-lg flex items-center justify-center">
-                          <FileText className="w-4 h-4" />
+                      <div className="space-y-2">
+                        <div className="mx-auto w-10 h-10 bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 rounded-lg flex items-center justify-center">
+                          <FileText className="w-5 h-5" />
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-zinc-200 truncate max-w-[150px] mx-auto">
+                          <p className="text-sm font-semibold text-zinc-200 truncate max-w-[220px]">
                             {file.name}
                           </p>
-                          <p className="text-[10px] font-mono text-zinc-500">
+                          <p className="text-[11px] font-mono text-zinc-500 mt-0.5">
                             {(file.size / 1024 / 1024).toFixed(2)} MB
                           </p>
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-1.5">
-                        <div className="mx-auto w-8 h-8 bg-zinc-950 border border-zinc-800 text-zinc-400 rounded-lg flex items-center justify-center">
-                          <Upload className="w-4 h-4" />
+                      <div className="space-y-2">
+                        <div className="mx-auto w-10 h-10 bg-zinc-950 border border-zinc-800 text-zinc-400 rounded-lg flex items-center justify-center">
+                          <Upload className="w-5 h-5" />
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-zinc-300">Drag or Click to select</p>
-                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">PDF, DOC, PNG, XLS</p>
+                          <p className="text-sm font-semibold text-zinc-300">
+                            Drag & Drop or click to browse
+                          </p>
+                          <p className="text-xs text-zinc-500 mt-0.5">
+                            Supports PDF, PNG, JPG, DOCX up to 10MB
+                          </p>
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Double Initials Input Fields */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
-                      Uploader Init.
+                {/* Form Initials Input - choosing from published templates */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest font-mono">
+                      Select Published Form Type
                     </label>
-                    <input
-                      type="text"
-                      required
-                      maxLength={3}
-                      value={uploaderInitials}
-                      onChange={(e) => setUploaderInitials(e.target.value)}
-                      placeholder="e.g. MG"
-                      className="w-full px-2.5 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-xs focus:outline-none text-center font-bold tracking-wider uppercase focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all font-mono placeholder:text-zinc-600"
-                      disabled={uploading}
-                    />
                   </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
-                      Form Initials
-                    </label>
-                    <select
-                      required
-                      value={formInitials}
-                      onChange={(e) => setFormInitials(e.target.value)}
-                      className="w-full px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-xs focus:outline-none font-bold tracking-wider uppercase focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all font-mono"
-                      disabled={uploading}
-                    >
-                      {templates.filter(t => t.published).map((temp) => (
-                        <option key={temp.id} value={temp.initials}>
-                          {temp.initials} - {temp.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  
+                  <select
+                    required
+                    value={formInitials}
+                    onChange={(e) => setFormInitials(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm font-bold tracking-wider uppercase focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all font-mono"
+                    disabled={uploading}
+                  >
+                    {templates.filter(t => t.published).map((temp) => (
+                      <option key={temp.id} value={temp.initials} className="bg-zinc-950 text-zinc-200 font-mono text-xs">
+                        {temp.initials} - {temp.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Comments Field */}
@@ -799,28 +936,33 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
                   <textarea
                     value={comments}
                     onChange={(e) => setComments(e.target.value)}
-                    placeholder="e.g. Bin Card verification"
+                    placeholder="Provide details about the document contents..."
                     rows={3}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-xs focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600 leading-relaxed resize-none font-sans"
+                    className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600 resize-none"
                     disabled={uploading}
                   />
+                </div>
+
+                {/* Immutability Disclaimer */}
+                <div className="p-3 bg-rose-950/15 border border-rose-900/30 rounded-xl text-xs text-rose-400/90 leading-relaxed font-sans">
+                  <strong>Immutability Clause:</strong> Once submitted, files are immediately integrated into the sequence tracking. They cannot be modified or deleted by your account.
                 </div>
 
                 {/* Submit Button */}
                 <button
                   type="submit"
                   disabled={uploading}
-                  className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold rounded-lg text-xs transition-all shadow-lg hover:shadow-indigo-600/25 flex items-center justify-center space-x-2 cursor-pointer"
+                  className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 flex items-center justify-center space-x-2 cursor-pointer mt-2"
                 >
                   {uploading ? (
                     <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Sequencing & Uploading...</span>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Processing & Sequencing...</span>
                     </>
                   ) : (
                     <>
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload & Sequence</span>
+                      <Upload className="w-4 h-4" />
+                      <span>Upload & Register Form</span>
                     </>
                   )}
                 </button>
@@ -949,6 +1091,15 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
                       </div>
 
                       <div className="flex items-center space-x-1 ml-2 shrink-0">
+                        {/* Edit button */}
+                        <button
+                          onClick={() => handleEditClick(temp)}
+                          className="p-1 rounded-lg border border-zinc-850 bg-zinc-900 text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors cursor-pointer"
+                          title="Edit requirement"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+
                         {/* Toggle status */}
                         <button
                           onClick={() => handleTogglePublish(temp)}
@@ -1245,6 +1396,252 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unpublish & Edit confirmation dialog */}
+      {isUnpublishConfirmOpen && templateToUnpublishAndEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4 text-left">
+            <div className="flex items-start space-x-3">
+              <div className="bg-amber-500/10 text-amber-400 p-2 rounded-lg border border-amber-500/20 shrink-0 mt-0.5">
+                <AlertCircle className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-100 font-sans">Unpublish Required to Edit</h3>
+                <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                  The form requirement <span className="font-semibold text-zinc-200">"{templateToUnpublishAndEdit.name}" ({templateToUnpublishAndEdit.initials})</span> is currently published and active.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-400 leading-relaxed bg-zinc-950/50 p-3.5 rounded-lg border border-zinc-850">
+              To edit details (including initials or description), this requirement must be unpublished first. Unpublishing will temporarily hide this form type from employee selection dashboards.
+            </p>
+
+            <div className="flex items-center justify-end space-x-2.5 pt-2">
+              <button
+                onClick={() => {
+                  setIsUnpublishConfirmOpen(false);
+                  setTemplateToUnpublishAndEdit(null);
+                }}
+                className="px-4 py-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-400 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmUnpublishAndEdit}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-amber-600/10 hover:shadow-amber-600/25 transition-all cursor-pointer"
+              >
+                Yes, Unpublish & Edit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Form Requirement Dialog */}
+      {isEditModalOpen && editingTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4 text-left">
+            <div>
+              <h3 className="text-base font-bold text-zinc-100 font-sans">Edit Form Requirement</h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Modify parameters for: <code className="font-mono font-bold text-indigo-400">{editingTemplate.initials}</code>
+              </p>
+            </div>
+
+            {editError && (
+              <div className="p-3 rounded-lg bg-rose-950/25 border border-rose-900/50 text-rose-400 text-xs flex items-start space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                  Form Name / Category
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. Bin Card Form"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                  Form Initials (2-4 characters)
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={4}
+                  value={editInitials}
+                  onChange={(e) => setEditInitials(e.target.value)}
+                  placeholder="e.g. BC"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs focus:outline-none text-left font-bold tracking-wider uppercase focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                  Description / Instructions
+                </label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Instructions for employee upload..."
+                  rows={3}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600 resize-none font-sans"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-zinc-800/80">
+              <button
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingTemplate(null);
+                }}
+                className="px-4 py-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-400 rounded-xl text-xs transition-colors cursor-pointer"
+                disabled={isSavingEdit}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold rounded-xl text-xs shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 transition-all flex items-center space-x-1.5 cursor-pointer"
+                disabled={isSavingEdit}
+              >
+                {isSavingEdit ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <span>Save Edits</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2-Stage Publication Confirmation Dialog */}
+      {publishStage > 0 && templateToPublish && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4 text-left">
+            
+            {publishStage === 1 ? (
+              <>
+                <div className="flex items-start space-x-3">
+                  <div className="bg-indigo-500/10 text-indigo-400 p-2 rounded-lg border border-indigo-500/20 shrink-0 mt-0.5">
+                    <Layers className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-100 font-sans">Stage 1 of 2: Prepare Publication</h3>
+                    <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                      Initiating official activation for requirement: <span className="text-zinc-200 font-semibold">{templateToPublish.name}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-zinc-400 leading-relaxed bg-zinc-950/50 p-3.5 rounded-lg border border-zinc-850 space-y-2">
+                  <p>
+                    You are publishing this form template to the live portal. Once published, employees will see this requirement as a selectable form category on their dashboards.
+                  </p>
+                  <p className="text-[11px] text-indigo-400 font-mono">
+                    • Template Name: {templateToPublish.name}<br />
+                    • Designated Initials: {templateToPublish.initials}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end space-x-2.5 pt-2">
+                  <button
+                    onClick={() => {
+                      setPublishStage(0);
+                      setTemplateToPublish(null);
+                    }}
+                    className="px-4 py-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-400 rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => setPublishStage(2)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 transition-all flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <span>Proceed to Stage 2</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start space-x-3">
+                  <div className="bg-emerald-500/10 text-emerald-400 p-2 rounded-lg border border-emerald-500/20 shrink-0 mt-0.5">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-100 font-sans text-emerald-400">Stage 2 of 2: Sequence Key Authorization</h3>
+                    <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                      Authorize immutable identifier sequence
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-zinc-400 leading-relaxed bg-zinc-950/50 p-3.5 rounded-lg border border-zinc-850 space-y-2.5">
+                  <p>
+                    Please double check that the Form Initials <span className="px-2 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-emerald-400 font-mono font-bold tracking-wider">{templateToPublish.initials}</span> are correct.
+                  </p>
+                  <p className="text-[11px] text-zinc-500 italic">
+                    Submissions will register with the format <span className="font-mono text-zinc-400 font-normal">{templateToPublish.initials}_[Sequence].pdf</span>. Sequence drift or editing initials after submissions begin may disrupt integrity reports.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    onClick={() => setPublishStage(1)}
+                    className="px-3 py-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-400 rounded-xl text-xs transition-all flex items-center space-x-1 cursor-pointer font-sans font-medium"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Back to Stage 1</span>
+                  </button>
+                  
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => {
+                        setPublishStage(0);
+                        setTemplateToPublish(null);
+                      }}
+                      className="px-3.5 py-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-500 rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleFinalPublish}
+                      disabled={isPublishingThroughStages}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-600/15 hover:shadow-emerald-600/25 transition-all flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      {isPublishingThroughStages ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Publishing...</span>
+                        </>
+                      ) : (
+                        <span>Authorize & Publish</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
           </div>
         </div>
       )}
