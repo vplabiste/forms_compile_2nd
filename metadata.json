@@ -1,0 +1,8 @@
+{
+  "name": "Forms Collect & Compile",
+  "description": "A secure web application for automated forms collection, sequential file naming, role-based dashboards, and client-side ZIP compilation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

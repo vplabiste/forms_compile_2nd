@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == role;
+    }
+
+    // Validation for global counters
+    function isValidCounter(data) {
+      return data.keys().hasAll(['formSequenceCount'])
+        && data.keys().size() == 1
+        && data.formSequenceCount is int;
+    }
+
+    // Validation for forms
+    function isValidForm(data) {
+      return data.keys().hasAll([
+        'id', 'originalName', 'systemName', 'cloudinaryUrl', 'comments',
+        'uploaderId', 'uploaderInitials', 'formInitials', 'sequenceNumber', 'createdAt'
+      ])
+        && data.keys().size() == 10
+        && data.id is string && data.id.size() <= 128
+        && data.originalName is string && data.originalName.size() <= 256
+        && data.systemName is string && data.systemName.size() <= 256
+        && data.cloudinaryUrl is string && data.cloudinaryUrl.size() <= 2048
+        && data.comments is string && data.comments.size() <= 10000
+        && data.uploaderId == request.auth.uid
+        && data.uploaderInitials is string && data.uploaderInitials.size() <= 10
+        && data.formInitials is string && data.formInitials.size() <= 10
+        && data.sequenceNumber is int
+        && data.createdAt == request.time;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || hasRole('Admin'));
+      allow list: if isSignedIn() && hasRole('Admin');
+      allow write: if false; // Managed entirely on backend server using Admin SDK
+    }
+
+    // Counters collection
+    match /counters/{counterId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidCounter(request.resource.data);
+    }
+
+    // Forms collection
+    match /forms/{formId} {
+      allow create: if isSignedIn() && isValidForm(request.resource.data);
+      allow get, list: if isSignedIn() && (
+        resource.data.uploaderId == request.auth.uid || 
+        hasRole('Manager') || 
+        hasRole('Admin')
+      );
+      allow update, delete: if false; // Updates are securely proxy-routed through our backend server API
+    }
+  }
+}

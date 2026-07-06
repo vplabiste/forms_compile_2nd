@@ -1,0 +1,53 @@
+{
+  "users": [
+    {
+      "uid": "user_2n7eo1ubf",
+      "email": "vincejerby85@gmail.com",
+      "password": "password@123",
+      "name": "Vince Jerby Labiste",
+      "initials": "VJ",
+      "role": "Admin",
+      "initialsConfirmed": true
+    },
+    {
+      "uid": "user_33vzr0994",
+      "email": "jamesandrew.xeleqt@gmail.com",
+      "password": "defPassword@123",
+      "name": "James Andrew Ologuin",
+      "initials": "JA",
+      "role": "Employee",
+      "initialsConfirmed": false
+    }
+  ],
+  "forms": [
+    {
+      "id": "ljsnp4j79m",
+      "originalName": "ATD FORM.pdf",
+      "systemName": "JA_ATD_1001.pdf",
+      "cloudinaryUrl": "https://res.cloudinary.com/dbdkqms9c/image/upload/v1783319727/ATD_FORM.pdf",
+      "comments": "First Form a Template Only",
+      "uploaderId": "user_33vzr0994",
+      "uploaderInitials": "JA",
+      "formInitials": "ATD",
+      "sequenceNumber": 1001,
+      "createdAt": "2026-07-06T06:35:27.075Z"
+    }
+  ],
+  "counters": {
+    "global": {
+      "formSequenceCount": 1001
+    }
+  },
+  "document_templates": [
+    {
+      "id": "temp_bp1m6cnip",
+      "name": "Authority To Deduct",
+      "initials": "ATD",
+      "description": "Payroll Deduction Authorization",
+      "published": true,
+      "createdAt": "2026-07-06T06:14:52.119Z",
+      "creatorId": "user_2n7eo1ubf",
+      "creatorName": "Vince Jerby Labiste"
+    }
+  ]
+}
