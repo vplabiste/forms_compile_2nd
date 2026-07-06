@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth, collection, query, getDocs, orderBy } from '../lib/firebaseClient';
+import { db, auth, collection, query, getDocs, orderBy, doc, setDoc } from '../lib/firebaseClient';
 import { UserPlus, Shield, User, Mail, Lock, KeyRound, Loader2, AlertCircle, CheckCircle2, RefreshCw, Users, Pencil, X } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 
@@ -64,24 +64,18 @@ export default function AdminDashboard() {
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/admin/update-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          uid: editingUser.uid,
-          name: editName.trim(),
-          initials: editInitials.trim().toUpperCase(),
-          role: editRole,
-          password: editPassword.trim() || undefined,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to update user.');
+      const updatedUser: UserProfile = {
+        ...editingUser,
+        name: editName.trim(),
+        initials: editInitials.trim().toUpperCase(),
+        role: editRole,
+      };
+      if (editPassword.trim()) {
+        updatedUser.password = editPassword.trim();
       }
+
+      // Write directly to Firestore!
+      await setDoc(doc(db, 'users', editingUser.uid), updatedUser);
 
       setSuccess(`User "${editName}" updated successfully!`);
       setEditingUser(null);
@@ -132,32 +126,28 @@ export default function AdminDashboard() {
     setSuccess(null);
 
     try {
-      // Get Firebase Auth ID Token for the currently logged-in Admin
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) {
-        throw new Error('Not authenticated. Please log in again.');
+      // Check if user already exists in Firestore
+      const querySnapshot = await getDocs(collection(db, 'users'));
+      const exists = querySnapshot.docs.some(
+        (d) => (d.data() as any).email?.toLowerCase() === email.trim().toLowerCase()
+      );
+      if (exists) {
+        throw new Error('A user with this email already exists.');
       }
 
-      // Call our Express endpoint
-      const response = await fetch('/api/admin/create-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim(),
-          password,
-          initials: initials.trim().toUpperCase(),
-          role,
-        }),
-      });
+      const uid = 'user_' + Math.random().toString(36).substring(2, 11);
+      const newUser: UserProfile = {
+        uid,
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        initials: initials.trim().toUpperCase(),
+        role: role as any,
+        initialsConfirmed: false
+      };
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create user');
-      }
+      // Write directly to Firestore!
+      await setDoc(doc(db, 'users', uid), newUser);
 
       setSuccess(`User "${name}" (${role}) registered successfully!`);
       

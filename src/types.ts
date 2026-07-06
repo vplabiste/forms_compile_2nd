@@ -7,6 +7,7 @@ export interface UserProfile {
   name: string;
   initials: string;
   initialsConfirmed?: boolean;
+  password?: string;
 }
 
 export interface FormRecord {

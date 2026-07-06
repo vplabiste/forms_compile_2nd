@@ -1,6 +1,24 @@
-// Mock Auth and Firestore SDK Bridge
-// Exposes the exact same interface as the Firebase SDK, but routes calls to our local file database server.
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, 
+  doc as firestoreDoc, 
+  getDoc as firestoreGetDoc, 
+  collection as firestoreCollection, 
+  query as firestoreQuery, 
+  where as firestoreWhere, 
+  orderBy as firestoreOrderBy, 
+  getDocs as firestoreGetDocs, 
+  runTransaction as firestoreRunTransaction, 
+  serverTimestamp as firestoreServerTimestamp,
+  setDoc as firestoreSetDoc,
+  updateDoc as firestoreUpdateDoc
+} from 'firebase/firestore';
+import firebaseConfig from '../../firebase-applet-config.json';
 
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Custom Auth Mock to bridge the existing session UI seamlessly
 class AuthMock {
   private _user: any = null;
 
@@ -21,13 +39,9 @@ class AuthMock {
 
 export const auth = new AuthMock();
 
-export const db = {
-  type: 'mock-db'
-};
-
 const authListeners: ((user: any) => void)[] = [];
 
-// Mock Auth SDK Functions
+// Mock Auth SDK Functions matching the expected interface
 export function onAuthStateChanged(authInstance: any, callback: (user: any) => void) {
   authListeners.push(callback);
   
@@ -68,144 +82,107 @@ export async function signInWithCustomToken(authInstance: any, customToken: stri
   }
 }
 
-// Mock Firestore Builders
-export function collection(dbInstance: any, collectionName: string) {
-  return { type: 'collection', name: collectionName };
+// Firestore Error Handler Wrapper matching the Skill specifications
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
 }
 
-export function doc(dbOrRef: any, pathOrId?: string, docId?: string) {
-  if (pathOrId === undefined && docId === undefined) {
-    // doc(collectionRef) -> 1 argument
-    return {
-      type: 'doc',
-      collection: dbOrRef.name || 'default',
-      id: Math.random().toString(36).substring(2, 15)
-    };
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
   }
-  if (docId === undefined) {
-    // doc(collectionRef, id) OR doc(db, collectionName) -> 2 arguments
-    if (dbOrRef.type === 'collection') {
-      return {
-        type: 'doc',
-        collection: dbOrRef.name,
-        id: pathOrId
-      };
-    }
-    return {
-      type: 'doc',
-      collection: pathOrId,
-      id: Math.random().toString(36).substring(2, 15)
-    };
-  }
-  // doc(db, collectionName, docId) -> 3 arguments
-  return {
-    type: 'doc',
-    collection: pathOrId,
-    id: docId
-  };
 }
 
-export function query(ref: any, ...constraints: any[]) {
-  return {
-    type: 'query',
-    collection: ref.name,
-    where: constraints.filter(c => c.type === 'where'),
-    orderBy: constraints.filter(c => c.type === 'orderBy')
-  };
-}
-
-export function where(field: string, op: string, value: any) {
-  return { type: 'where', field, op, value };
-}
-
-export function orderBy(field: string, dir: string = 'asc') {
-  return { type: 'orderBy', field, dir };
-}
-
-export function serverTimestamp() {
-  return new Date().toISOString();
-}
-
-// Mock Firestore Queries
-export async function getDocs(queryObj: any) {
-  const collectionName = queryObj.type === 'query' ? queryObj.collection : queryObj.name;
-  const whereClauses = queryObj.type === 'query' ? queryObj.where : [];
-  const orderByClauses = queryObj.type === 'query' ? queryObj.orderBy : [];
-
-  const res = await fetch('/api/firestore/query', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ collection: collectionName, where: whereClauses, orderBy: orderByClauses })
-  });
-
-  if (!res.ok) {
-    throw new Error('Failed to retrieve database records.');
-  }
-  
-  const data = await res.json();
-  
-  return {
-    forEach: (callback: (doc: any) => void) => {
-      data.forEach((item: any) => {
-        callback({
-          data: () => item,
-          id: item.id
-        });
-      });
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+      emailVerified: true,
+      isAnonymous: false,
+      tenantId: null,
+      providerInfo: []
     },
-    docs: data.map((item: any) => ({
-      data: () => item,
-      id: item.id
-    }))
+    operationType,
+    path
   };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
+// Re-export original functions
+export const doc = firestoreDoc;
+export const collection = firestoreCollection;
+export const query = firestoreQuery;
+export const where = firestoreWhere;
+export const orderBy = firestoreOrderBy;
+export const serverTimestamp = firestoreServerTimestamp;
+
+// Wrapped Firestore read/write operations to inject the mandatory error handlers
 export async function getDoc(docRef: any) {
-  const res = await fetch(`/api/firestore/${docRef.collection}/${docRef.id}`);
-  if (!res.ok) {
-    return { exists: () => false, data: () => null };
+  try {
+    return await firestoreGetDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, docRef?.path || null);
+    throw err;
   }
-  const data = await res.json();
-  return {
-    exists: () => data !== null,
-    data: () => data,
-    id: docRef.id
-  };
+}
+
+export async function getDocs(queryObj: any) {
+  try {
+    return await firestoreGetDocs(queryObj);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, queryObj?.path || null);
+    throw err;
+  }
+}
+
+export async function setDoc(docRef: any, data: any, options?: any) {
+  try {
+    if (options) {
+      return await firestoreSetDoc(docRef, data, options);
+    }
+    return await firestoreSetDoc(docRef, data);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, docRef?.path || null);
+    throw err;
+  }
+}
+
+export async function updateDoc(docRef: any, data: any) {
+  try {
+    return await firestoreUpdateDoc(docRef, data);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, docRef?.path || null);
+    throw err;
+  }
 }
 
 export async function runTransaction(dbInstance: any, callback: (transaction: any) => Promise<any>) {
-  const operations: any[] = [];
-  const transactionMock = {
-    get: async (docRef: any) => {
-      const snap = await getDoc(docRef);
-      return snap;
-    },
-    set: (docRef: any, data: any, options?: any) => {
-      operations.push({ type: 'set', docRef, data, options });
-    },
-    update: (docRef: any, data: any) => {
-      operations.push({ type: 'update', docRef, data });
-    },
-    delete: (docRef: any) => {
-      operations.push({ type: 'delete', docRef });
-    }
-  };
-
-  await callback(transactionMock);
-
-  const res = await fetch('/api/firestore/transaction', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ operations })
-  });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Transaction execution failed.');
+  try {
+    return await firestoreRunTransaction(dbInstance, callback);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, 'transaction');
+    throw err;
   }
-
-  return await res.json();
 }
 
-const defaultApp = { name: 'mock-app' };
+const defaultApp = { name: 'real-firebase' };
 export default defaultApp;

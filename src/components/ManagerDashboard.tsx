@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth, collection, query, getDocs, orderBy, runTransaction, doc, serverTimestamp } from '../lib/firebaseClient';
+import { db, auth, collection, query, getDocs, orderBy, runTransaction, doc, serverTimestamp, updateDoc } from '../lib/firebaseClient';
 import { Download, Search, Edit2, CheckSquare, Square, FileArchive, Loader2, AlertCircle, CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Filter, FileText, Upload, Cloud, Plus, Trash2, Layers, Check, X } from 'lucide-react';
 import { FormRecord, UserProfile, DocumentTemplate } from '../types';
 import JSZip from 'jszip';
@@ -495,24 +495,10 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
     setSuccess(null);
 
     try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) {
-        throw new Error('User session expired. Please log in again.');
-      }
-
-      const res = await fetch(`/api/manager/edit-form/${editingForm.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ comments: newComment }),
+      // Write directly to Firestore!
+      await updateDoc(doc(db, 'forms', editingForm.id), {
+        comments: newComment || ''
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to update comment');
-      }
 
       // Update local state
       setForms(

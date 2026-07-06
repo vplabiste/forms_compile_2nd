@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, AlertCircle, Loader2, CheckCircle, ShieldAlert, Lock } from 'lucide-react';
 import { UserProfile } from '../types';
+import { db, doc, setDoc } from '../lib/firebaseClient';
 
 interface ProfileInitializationProps {
   user: UserProfile;
@@ -45,31 +46,26 @@ export default function ProfileInitialization({ user, onSuccess }: ProfileInitia
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/user/confirm-initials', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          uid: user.uid,
-          name: name.trim(),
-          initials: cleanInitials,
-          password: password ? password.trim() : undefined,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to initialize profile.');
+      const updatedUser: UserProfile = {
+        ...user,
+        name: name.trim(),
+        initials: cleanInitials,
+        initialsConfirmed: true
+      };
+      if (password) {
+        updatedUser.password = password.trim();
       }
+
+      // Write directly to Firestore!
+      await setDoc(doc(db, 'users', user.uid), updatedUser);
 
       setSuccess('Profile initialized and locked successfully! Loading your dashboard...');
       
       // Update the local storage item for subsequent sessions
-      localStorage.setItem('form_collect_user', JSON.stringify(data.user));
+      localStorage.setItem('form_collect_user', JSON.stringify(updatedUser));
 
       setTimeout(() => {
-        onSuccess(data.user);
+        onSuccess(updatedUser);
       }, 1500);
     } catch (err: any) {
       console.error('Error confirming initials:', err);
