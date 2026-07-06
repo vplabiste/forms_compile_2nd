@@ -86,8 +86,8 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
   }, [user]);
 
   // Cloudinary keys
-  const cloudName = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME || 'demo';
-  const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET || 'unsigned_preset';
+  const cloudName = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME || 'dbdkqms9c';
+  const uploadPreset = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET || 'fordaforms';
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -136,30 +136,48 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
     setUploadSuccess(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
-
-      const cloudinaryRes = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudName}/upload`,
-        {
-          method: 'POST',
-          body: formData,
+      let secureUrl = '';
+      try {
+        if (cloudName === 'demo' || uploadPreset === 'unsigned_preset') {
+          throw new Error('Cloudinary not configured. Using fallback local storage.');
         }
-      );
 
-      if (!cloudinaryRes.ok) {
-        const errData = await cloudinaryRes.json();
-        throw new Error(
-          errData.error?.message || 'Failed to upload document to storage provider.'
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', uploadPreset);
+
+        const cloudinaryRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/upload`,
+          {
+            method: 'POST',
+            body: formData,
+          }
         );
-      }
 
-      const cloudinaryData = await cloudinaryRes.json();
-      const secureUrl = cloudinaryData.secure_url;
+        if (!cloudinaryRes.ok) {
+          const errData = await cloudinaryRes.json().catch(() => ({}));
+          throw new Error(
+            errData.error?.message || 'Failed to upload document to storage provider.'
+          );
+        }
 
-      if (!secureUrl) {
-        throw new Error('Could not retrieve secure storage URL from Cloudinary.');
+        const cloudinaryData = await cloudinaryRes.json();
+        secureUrl = cloudinaryData.secure_url;
+
+        if (!secureUrl) {
+          throw new Error('Could not retrieve secure storage URL from Cloudinary.');
+        }
+      } catch (uploadErr: any) {
+        console.warn('Cloudinary upload bypassed/failed, using base64 fallback:', uploadErr);
+        if (file.size > 900 * 1024) {
+          throw new Error('The file is too large for database-backed fallback storage. Please upload a file smaller than 900 KB, or configure your Cloudinary account.');
+        }
+        secureUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (e) => reject(new Error('Failed to read file: ' + e));
+          reader.readAsDataURL(file);
+        });
       }
 
       await runTransaction(db, async (transaction) => {
