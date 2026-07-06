@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth, collection, query, getDocs, orderBy, doc, setDoc } from '../lib/firebaseClient';
-import { UserPlus, Shield, User, Mail, Lock, KeyRound, Loader2, AlertCircle, CheckCircle2, RefreshCw, Users, Pencil, X } from 'lucide-react';
+import { db, auth, collection, query, getDocs, orderBy, doc, setDoc, deleteDoc } from '../lib/firebaseClient';
+import { UserPlus, Shield, User, Mail, Lock, KeyRound, Loader2, AlertCircle, CheckCircle2, RefreshCw, Users, Pencil, X, Trash2 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 
-export default function AdminDashboard() {
+interface AdminDashboardProps {
+  currentUser?: UserProfile | null;
+}
+
+export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -26,6 +30,43 @@ export default function AdminDashboard() {
   const [editInitials, setEditInitials] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('Employee');
   const [editPassword, setEditPassword] = useState('');
+
+  // User deletion states
+  const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
+
+  const confirmDeleteUser = (u: UserProfile) => {
+    if (currentUser?.uid === u.uid) {
+      setError('You cannot delete your own account.');
+      return;
+    }
+    setDeletingUser(u);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const cancelDeleteUser = () => {
+    setDeletingUser(null);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deletingUser) return;
+
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await deleteDoc(doc(db, 'users', deletingUser.uid));
+      setSuccess(`User "${deletingUser.name}" deleted successfully!`);
+      setDeletingUser(null);
+      fetchUsers();
+    } catch (err: any) {
+      console.error('Error deleting user:', err);
+      setError(err.message || 'An error occurred while deleting the user.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const startEditUser = (u: UserProfile) => {
     setEditingUser(u);
@@ -409,14 +450,30 @@ export default function AdminDashboard() {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => startEditUser(u)}
-                          className="p-1.5 bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-indigo-400 hover:border-indigo-500/50 rounded-lg transition-all cursor-pointer inline-flex items-center space-x-1"
-                          title="Edit User"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-1">Edit</span>
-                        </button>
+                        <div className="inline-flex items-center space-x-2">
+                          <button
+                            onClick={() => startEditUser(u)}
+                            className="p-1.5 bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-indigo-400 hover:border-indigo-500/50 rounded-lg transition-all cursor-pointer inline-flex items-center space-x-1"
+                            title="Edit User"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-1">Edit</span>
+                          </button>
+                          
+                          <button
+                            onClick={() => confirmDeleteUser(u)}
+                            disabled={currentUser?.uid === u.uid}
+                            className={`p-1.5 border rounded-lg transition-all cursor-pointer inline-flex items-center space-x-1 ${
+                              currentUser?.uid === u.uid
+                                ? 'bg-zinc-950/40 border-zinc-900 text-zinc-650 cursor-not-allowed opacity-50'
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-rose-400 hover:border-rose-500/50'
+                            }`}
+                            title={currentUser?.uid === u.uid ? "Cannot delete your own account" : "Delete User"}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-1">Delete</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -563,6 +620,83 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Modal Overlay */}
+      {deletingUser && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-rose-900/50 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden relative animate-fade-in">
+            {/* Header */}
+            <div className="bg-zinc-950 px-6 py-4 border-b border-zinc-800/80 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Trash2 className="w-4.5 h-4.5 text-rose-500" />
+                <h3 className="text-zinc-200 font-bold text-sm tracking-wide">Delete User Account</h3>
+              </div>
+              <button
+                onClick={cancelDeleteUser}
+                className="p-1 text-zinc-400 hover:text-zinc-250 hover:bg-zinc-800/50 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-rose-950/20 border border-rose-900/40 rounded-xl flex items-start space-x-3">
+                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-rose-300">Are you absolutely sure?</h4>
+                  <p className="text-xs text-rose-400/80 leading-relaxed">
+                    This action is permanent and cannot be undone. This will delete the user account profile from Cloud Firestore immediately.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-4 space-y-2">
+                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest font-mono">User to Delete</div>
+                <div>
+                  <div className="text-sm font-semibold text-zinc-200">{deletingUser.name}</div>
+                  <div className="text-xs text-zinc-550 font-mono mt-0.5">{deletingUser.email}</div>
+                </div>
+                <div className="pt-2 border-t border-zinc-850 flex justify-between text-xs">
+                  <span className="text-zinc-400">System Role:</span>
+                  <span className="font-semibold text-zinc-300">{deletingUser.role}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-400">Initials:</span>
+                  <span className="font-mono font-bold text-zinc-300">{deletingUser.initials}</span>
+                </div>
+              </div>
+
+              {/* Actions Footer */}
+              <div className="flex space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={cancelDeleteUser}
+                  className="flex-1 py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold rounded-lg text-xs transition-all cursor-pointer text-center"
+                  disabled={isLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteUser}
+                  className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold rounded-lg text-xs transition-all shadow-md flex items-center justify-center space-x-1 cursor-pointer"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <span>Delete Permanently</span>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -58,52 +58,24 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         (d) => (d.data() as any).email?.toLowerCase() === email.trim().toLowerCase()
       );
 
-      let profile: UserProfile;
-
       if (!userDoc) {
-        // Auto-create user if not found to ensure smooth testing and zero lockouts
-        const cleanedEmail = email.trim();
-        const namePart = cleanedEmail.split('@')[0];
-        const name = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-        const initials = namePart.slice(0, 3).toUpperCase();
-        
-        let role = 'Admin';
-        if (cleanedEmail.toLowerCase().includes('manager')) {
-          role = 'Manager';
-        } else if (cleanedEmail.toLowerCase().includes('employee')) {
-          role = 'Employee';
-        }
-
-        const uid = 'user_' + Math.random().toString(36).substring(2, 11);
-        profile = {
-          uid,
-          email: cleanedEmail,
-          password: password,
-          name,
-          initials: initials || 'ADM',
-          role: role as any,
-          initialsConfirmed: false
-        };
-
-        // Save directly to Firestore
-        await setDoc(doc(db, 'users', uid), profile);
-      } else {
-        const existingData = userDoc.data() as any;
-        if (existingData.password !== password) {
-          // Update password if changed to prevent lockout
-          existingData.password = password;
-          await setDoc(doc(db, 'users', userDoc.id), existingData);
-        }
-        profile = {
-          uid: existingData.uid || userDoc.id,
-          email: existingData.email,
-          password: existingData.password,
-          name: existingData.name,
-          initials: existingData.initials,
-          role: existingData.role,
-          initialsConfirmed: existingData.initialsConfirmed ?? false
-        };
+        throw new Error('Invalid email or password.');
       }
+
+      const existingData = userDoc.data() as any;
+      if (existingData.password !== password) {
+        throw new Error('Invalid email or password.');
+      }
+
+      const profile: UserProfile = {
+        uid: existingData.uid || userDoc.id,
+        email: existingData.email,
+        password: existingData.password,
+        name: existingData.name,
+        initials: existingData.initials,
+        role: existingData.role,
+        initialsConfirmed: existingData.initialsConfirmed ?? false
+      };
 
       // Establish client auth state
       await signInWithCustomToken(auth, JSON.stringify(profile));

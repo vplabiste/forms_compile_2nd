@@ -146,7 +146,7 @@ export default function App() {
             <div>
               {user.role === 'Admin' ? (
                 adminActiveTab === 'Admin' ? (
-                  <AdminDashboard />
+                  <AdminDashboard currentUser={user} />
                 ) : adminActiveTab === 'Manager' ? (
                   <ManagerDashboard user={user} />
                 ) : (

@@ -11,7 +11,8 @@ import {
   runTransaction as firestoreRunTransaction, 
   serverTimestamp as firestoreServerTimestamp,
   setDoc as firestoreSetDoc,
-  updateDoc as firestoreUpdateDoc
+  updateDoc as firestoreUpdateDoc,
+  deleteDoc as firestoreDeleteDoc
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -182,6 +183,16 @@ export async function updateDoc(docRef: any, data: any) {
     return await firestoreUpdateDoc(docRef, data);
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, docRef?.path || null);
+    throw err;
+  }
+}
+
+export async function deleteDoc(docRef: any) {
+  try {
+    await authPromise;
+    return await firestoreDeleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, docRef?.path || null);
     throw err;
   }
 }
