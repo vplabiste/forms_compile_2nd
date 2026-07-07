@@ -1,10 +1,9 @@
 {
-  "projectId": "gen-lang-client-0579604784",
-  "appId": "1:895075279408:web:396055be3c0e29535483f5",
-  "apiKey": "AIzaSyD6pBazBajITcemWSZUQ34RDwYmlit6bfk",
-  "authDomain": "gen-lang-client-0579604784.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-formscollectcomp-4f108bee-3ab3-41a8-b6b6-c326d189add0",
-  "storageBucket": "gen-lang-client-0579604784.firebasestorage.app",
-  "messagingSenderId": "895075279408",
-  "measurementId": ""
+  "projectId": "forms-collect-compile",
+  "appId": "1:281369322540:web:f5282cfa2ee3223858dd89",
+  "apiKey": "AIzaSyCkT6S9r4QrUg6FvZ7S7W2rMRGhtBQaHKQ",
+  "authDomain": "forms-collect-compile.firebaseapp.com",
+  "storageBucket": "forms-collect-compile.firebasestorage.app",
+  "messagingSenderId": "281369322540",
+  "measurementId": "G-MQL94VQDBN"
 }

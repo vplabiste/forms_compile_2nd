@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role and signature initials.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["Employee", "Manager", "Admin"] },
+        "name": { "type": "string" },
+        "initials": { "type": "string" },
+        "initialsConfirmed": { "type": "boolean" },
+        "password": { "type": "string" }
+      },
+      "required": ["uid", "email", "role", "name", "initials"]
+    },
+    "FormRecord": {
+      "title": "FormRecord",
+      "description": "Form submission with system tracking sequence name.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "originalName": { "type": "string" },
+        "systemName": { "type": "string" },
+        "cloudinaryUrl": { "type": "string" },
+        "comments": { "type": "string" },
+        "uploaderId": { "type": "string" },
+        "uploaderInitials": { "type": "string" },
+        "formInitials": { "type": "string" },
+        "sequenceNumber": { "type": "integer" },
+        "createdAt": { "type": "string" },
+        "archived": { "type": "boolean" }
+      },
+      "required": [
+        "id",
+        "originalName",
+        "systemName",
+        "cloudinaryUrl",
+        "comments",
+        "uploaderId",
+        "uploaderInitials",
+        "formInitials",
+        "sequenceNumber",
+        "createdAt"
+      ]
+    },
+    "DocumentTemplate": {
+      "title": "DocumentTemplate",
+      "description": "Form template published by manager.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "initials": { "type": "string" },
+        "description": { "type": "string" },
+        "published": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" }
+      },
+      "required": [
+        "id",
+        "name",
+        "initials",
+        "description",
+        "published",
+        "createdAt",
+        "creatorId",
+        "creatorName"
+      ]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Audit log of actions performed in the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string", "enum": ["Upload", "Download", "Delete", "Archive", "Restore"] },
+        "performedBy": { "type": "string" },
+        "performedByRole": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "action", "performedBy", "performedByRole", "details", "createdAt"]
+    },
+    "Counter": {
+      "title": "Counter",
+      "description": "Atomic sequence counter per form type.",
+      "type": "object",
+      "properties": {
+        "formSequenceCount": { "type": "integer" }
+      },
+      "required": ["formSequenceCount"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles collection."
+    },
+    "counters/{counterId}": {
+      "schema": "Counter",
+      "description": "Sequence counters collection."
+    },
+    "forms/{formId}": {
+      "schema": "FormRecord",
+      "description": "Submitted forms collection."
+    },
+    "logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "System activity logs."
+    },
+    "document_templates/{templateId}": {
+      "schema": "DocumentTemplate",
+      "description": "Document templates published by managers."
+    }
+  }
+}

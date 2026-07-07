@@ -21,6 +21,7 @@ export interface FormRecord {
   formInitials: string;
   sequenceNumber: number;
   createdAt: any; // Firestore Timestamp
+  archived?: boolean;
 }
 
 export interface DocumentTemplate {
@@ -33,4 +34,14 @@ export interface DocumentTemplate {
   creatorId: string;
   creatorName: string;
 }
+
+export interface ActivityLog {
+  id: string;
+  action: 'Upload' | 'Download' | 'Delete' | 'Archive' | 'Restore';
+  performedBy: string; // name or email
+  performedByRole: string; // Employee or Manager or Admin
+  details: string; // Specific details about the file(s)
+  createdAt: any; // Firestore Timestamp
+}
+
 

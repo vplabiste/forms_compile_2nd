@@ -1,19 +1,92 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users collection
+
+    // Helper functions for validating each model
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'initials', 'role'])
+        && data.keys().size() >= 5 && data.keys().size() <= 7
+        && data.uid is string && data.uid.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && data.name is string && data.name.size() <= 256
+        && data.initials is string && data.initials.size() <= 10
+        && (data.role == 'Employee' || data.role == 'Manager' || data.role == 'Admin')
+        && (!data.keys().hasAll(['password']) || data.password is string)
+        && (!data.keys().hasAll(['initialsConfirmed']) || data.initialsConfirmed is bool);
+    }
+
+    function isValidCounter(data) {
+      return data.keys().hasAll(['formSequenceCount'])
+        && data.keys().size() == 1
+        && data.formSequenceCount is int;
+    }
+
+    function isValidForm(data) {
+      return data.keys().hasAll([
+        'id', 'originalName', 'systemName', 'cloudinaryUrl', 'comments',
+        'uploaderId', 'uploaderInitials', 'formInitials', 'sequenceNumber', 'createdAt'
+      ])
+        && data.keys().size() >= 10 && data.keys().size() <= 11
+        && data.id is string && data.id.size() <= 128
+        && data.originalName is string && data.originalName.size() <= 256
+        && data.systemName is string && data.systemName.size() <= 256
+        && data.cloudinaryUrl is string && data.cloudinaryUrl.size() <= 2048
+        && data.comments is string && data.comments.size() <= 10000
+        && data.uploaderId is string && data.uploaderId.size() <= 128
+        && data.uploaderInitials is string && data.uploaderInitials.size() <= 10
+        && data.formInitials is string && data.formInitials.size() <= 10
+        && data.sequenceNumber is int
+        && (!data.keys().hasAll(['archived']) || data.archived is bool);
+    }
+
+    // Note that ActivityLog can optionally contain ID field
+    function isValidLog(data) {
+      return data.keys().hasAll(['action', 'performedBy', 'performedByRole', 'details', 'createdAt'])
+        && data.keys().size() >= 5 && data.keys().size() <= 6
+        && (data.action == 'Upload' || data.action == 'Download' || data.action == 'Delete' || data.action == 'Archive' || data.action == 'Restore')
+        && data.performedBy is string && data.performedBy.size() <= 256
+        && data.performedByRole is string && data.performedByRole.size() <= 50
+        && data.details is string && data.details.size() <= 10000;
+    }
+
+    function isValidTemplate(data) {
+      return data.keys().hasAll(['id', 'name', 'initials', 'description', 'published', 'createdAt', 'creatorId', 'creatorName'])
+        && data.keys().size() == 8
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 256
+        && data.initials is string && data.initials.size() <= 10
+        && data.description is string && data.description.size() <= 5000
+        && data.published is bool
+        && data.creatorId is string && data.creatorId.size() <= 128
+        && data.creatorName is string && data.creatorName.size() <= 256;
+    }
+
+    // Collection match rules
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidUser(request.resource.data);
     }
 
-    // Counters collection
     match /counters/{counterId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidCounter(request.resource.data);
     }
 
-    // Forms collection
     match /forms/{formId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidForm(request.resource.data);
+      allow delete: if true;
+    }
+
+    match /logs/{logId} {
+      allow read: if true;
+      allow write: if isValidLog(request.resource.data);
+    }
+
+    match /document_templates/{templateId} {
+      allow read: if true;
+      allow create, update: if isValidTemplate(request.resource.data);
+      allow delete: if true;
     }
   }
 }

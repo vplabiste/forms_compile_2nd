@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, runTransaction, doc, collection, query, where, getDocs, orderBy, serverTimestamp } from '../lib/firebaseClient';
+import { db, runTransaction, doc, collection, query, where, getDocs, orderBy, serverTimestamp, addDoc } from '../lib/firebaseClient';
 import { Upload, FileText, CheckCircle, Loader2, AlertCircle, HelpCircle, History, Cloud, Layers, ArrowRight } from 'lucide-react';
 import { UserProfile, FormRecord, DocumentTemplate } from '../types';
 
@@ -16,6 +16,7 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
   // Template states
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [templateFetchError, setTemplateFetchError] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
 
 
@@ -30,6 +31,7 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
   // History state
   const [history, setHistory] = useState<FormRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyFetchError, setHistoryFetchError] = useState<string | null>(null);
 
   // Read Cloudinary settings from Vite env
   const cloudName = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME || 'dbdkqms9c';
@@ -42,6 +44,7 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
 
   const fetchTemplates = async () => {
     setLoadingTemplates(true);
+    setTemplateFetchError(null);
     try {
       const q = query(
         collection(db, 'document_templates'),
@@ -60,8 +63,26 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
         setSelectedTemplate(null);
         setFormInitials('');
       }
-    } catch (err) {
-      console.error('Error fetching document templates:', err);
+    } catch (err: any) {
+      const isPermissionDenied = err.code === 'permission-denied' || 
+                                 (err.message && err.message.toLowerCase().includes('permission')) ||
+                                 JSON.stringify(err).toLowerCase().includes('permission');
+      
+      console.error('Error fetching document templates:', {
+        error: err,
+        code: err.code,
+        message: err.message,
+        isPermissionDenied,
+        authUserId: user.uid,
+        authUserEmail: user.email,
+        path: 'document_templates'
+      });
+
+      if (isPermissionDenied) {
+        setTemplateFetchError('Missing or insufficient database permissions to fetch templates. Please verify your role authorization.');
+      } else {
+        setTemplateFetchError('An error occurred while fetching form requirements: ' + (err.message || err));
+      }
     } finally {
       setLoadingTemplates(false);
     }
@@ -69,6 +90,7 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
 
   const fetchHistory = async () => {
     setLoadingHistory(true);
+    setHistoryFetchError(null);
     try {
       const q = query(
         collection(db, 'forms'),
@@ -81,8 +103,26 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
         fetchedHistory.push(doc.data() as FormRecord);
       });
       setHistory(fetchedHistory);
-    } catch (err) {
-      console.error('Error fetching history:', err);
+    } catch (err: any) {
+      const isPermissionDenied = err.code === 'permission-denied' || 
+                                 (err.message && err.message.toLowerCase().includes('permission')) ||
+                                 JSON.stringify(err).toLowerCase().includes('permission');
+      
+      console.error('Error fetching history:', {
+        error: err,
+        code: err.code,
+        message: err.message,
+        isPermissionDenied,
+        authUserId: user.uid,
+        authUserEmail: user.email,
+        path: 'forms'
+      });
+
+      if (isPermissionDenied) {
+        setHistoryFetchError('Missing or insufficient database permissions to retrieve your upload history. Please verify your role authorization.');
+      } else {
+        setHistoryFetchError('An error occurred while fetching history: ' + (err.message || err));
+      }
     } finally {
       setLoadingHistory(false);
     }
@@ -175,9 +215,12 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
         });
       }
 
-      // 2. Transaction: Read global counter, increment, write form record
+      let finalSystemName = '';
+
+      // 2. Transaction: Read per-form counter, increment, write form record
       await runTransaction(db, async (transaction) => {
-        const counterRef = doc(db, 'counters', 'global');
+        const formattedFormInitials = formInitials.trim().toUpperCase();
+        const counterRef = doc(db, 'counters', formattedFormInitials.toLowerCase());
         const counterSnap = await transaction.get(counterRef);
 
         let currentCount = 1000; // Base starting point for beautiful serial sequencing
@@ -195,8 +238,8 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
 
         // Calculate system-assigned file name
         const fileExtension = file.name.split('.').pop() || 'pdf';
-        const formattedFormInitials = formInitials.trim().toUpperCase();
         const systemName = `${user.initials}_${formattedFormInitials}_${nextCount}.${fileExtension}`;
+        finalSystemName = systemName;
 
         // Create new form record
         const formsCollectionRef = collection(db, 'forms');
@@ -215,6 +258,19 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
           createdAt: serverTimestamp(),
         });
       });
+
+      // Add activity log
+      try {
+        await addDoc(collection(db, 'logs'), {
+          action: 'Upload',
+          performedBy: user.name || user.email,
+          performedByRole: user.role || 'Employee',
+          details: `Uploaded file "${finalSystemName}" (Original: "${file.name}")`,
+          createdAt: serverTimestamp()
+        });
+      } catch (logErr) {
+        console.error('Failed to write activity log:', logErr);
+      }
 
       // Successful completion
       setSuccess('Form successfully uploaded, registered, and sequenced!');
@@ -268,8 +324,26 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
         </div>
       )}
 
+      {/* Template Fetch Error */}
+      {templateFetchError && (
+        <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/50 text-red-400 text-xs flex items-start space-x-3 leading-relaxed font-mono">
+          <AlertCircle className="w-4.5 h-4.5 text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <strong>Authorization Error:</strong> {templateFetchError}
+            <div className="mt-2">
+              <button 
+                onClick={fetchTemplates}
+                className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded text-red-400 font-bold uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                Retry Loading Templates
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Published Form Requirements Cards Grid */}
-      {templates.length > 0 && (
+      {!templateFetchError && templates.length > 0 && (
         <div className="space-y-4 pt-2">
           <div className="flex items-center space-x-2">
             <div className="bg-indigo-500/10 text-indigo-400 p-1.5 rounded-lg border border-indigo-500/25">
@@ -540,7 +614,25 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
             </button>
           </div>
 
+          {historyFetchError && (
+            <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/50 text-red-400 text-xs flex items-start space-x-3 leading-relaxed font-mono m-4">
+              <AlertCircle className="w-4.5 h-4.5 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <strong>Authorization Error:</strong> {historyFetchError}
+                <div className="mt-2">
+                  <button 
+                    onClick={fetchHistory}
+                    className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded text-red-400 font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    Retry Loading History
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* History table */}
+          {!historyFetchError && (
           <div className="overflow-y-auto flex-1 min-h-0 border border-zinc-800/80 rounded-xl bg-zinc-950/20">
             {loadingHistory && history.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-2 font-mono">
@@ -592,6 +684,7 @@ export default function EmployeeDashboard({ user }: EmployeeDashboardProps) {
               </table>
             )}
           </div>
+          )}
         </div>
 
       </div>

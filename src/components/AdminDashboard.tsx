@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth, collection, query, getDocs, orderBy, doc, setDoc, deleteDoc } from '../lib/firebaseClient';
-import { UserPlus, Shield, User, Mail, Lock, KeyRound, Loader2, AlertCircle, CheckCircle2, RefreshCw, Users, Pencil, X, Trash2 } from 'lucide-react';
-import { UserProfile, UserRole } from '../types';
+import { UserPlus, Shield, User, Mail, Lock, KeyRound, Loader2, AlertCircle, CheckCircle2, RefreshCw, Users, Pencil, X, Trash2, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { UserProfile, UserRole, ActivityLog } from '../types';
 
 interface AdminDashboardProps {
   currentUser?: UserProfile | null;
 }
 
 export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
+  // Navigation State
+  const [adminTab, setAdminTab] = useState<'users' | 'logs'>('users');
+
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -18,6 +21,21 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
   // List of users state
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [usersFetchError, setUsersFetchError] = useState<string | null>(null);
+
+  // System Activity Logs states
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsFetchError, setLogsFetchError] = useState<string | null>(null);
+
+  // Log filter states
+  const [logSearch, setLogSearch] = useState('');
+  const [logAction, setLogAction] = useState<string>('All');
+  const [logRole, setLogRole] = useState<string>('All');
+
+  // Log pagination states
+  const [logPage, setLogPage] = useState(1);
+  const logsPerPage = 15;
 
   // Status states
   const [isLoading, setIsLoading] = useState(false);
@@ -135,6 +153,7 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
 
   const fetchUsers = async () => {
     setLoadingUsers(true);
+    setUsersFetchError(null);
     try {
       const q = query(collection(db, 'users'), orderBy('name', 'asc'));
       const snapshot = await getDocs(q);
@@ -143,12 +162,60 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
         fetchedUsers.push(doc.data() as UserProfile);
       });
       setUsers(fetchedUsers);
-    } catch (err) {
-      console.error('Error fetching users:', err);
+    } catch (err: any) {
+      const isPermissionDenied = err.code === 'permission-denied' || 
+                                 (err.message && err.message.toLowerCase().includes('permission')) ||
+                                 JSON.stringify(err).toLowerCase().includes('permission');
+      console.error('Error fetching users:', { error: err, isPermissionDenied });
+      if (isPermissionDenied) {
+        setUsersFetchError('Missing or insufficient permissions to fetch users. Ensure you are an Admin.');
+      } else {
+        setUsersFetchError('Error fetching users: ' + (err.message || err));
+      }
     } finally {
       setLoadingUsers(false);
     }
   };
+
+  const fetchLogs = async () => {
+    setLoadingLogs(true);
+    setLogsFetchError(null);
+    try {
+      const q = query(collection(db, 'logs'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      const fetchedLogs: ActivityLog[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data() as any;
+        fetchedLogs.push({
+          id: doc.id,
+          action: data.action,
+          performedBy: data.performedBy,
+          performedByRole: data.performedByRole,
+          details: data.details,
+          createdAt: data.createdAt
+        });
+      });
+      setActivityLogs(fetchedLogs);
+    } catch (err: any) {
+      const isPermissionDenied = err.code === 'permission-denied' || 
+                                 (err.message && err.message.toLowerCase().includes('permission')) ||
+                                 JSON.stringify(err).toLowerCase().includes('permission');
+      console.error('Error fetching system logs:', { error: err, isPermissionDenied });
+      if (isPermissionDenied) {
+        setLogsFetchError('Missing or insufficient permissions to fetch system logs. Ensure you are an Admin.');
+      } else {
+        setLogsFetchError('Error fetching system logs: ' + (err.message || err));
+      }
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (adminTab === 'logs') {
+      fetchLogs();
+    }
+  }, [adminTab]);
 
   const handleRegisterUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,6 +287,37 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
     }
   };
 
+  // Filter and paginated logs
+  const filteredLogs = activityLogs.filter((log) => {
+    const searchLower = logSearch.toLowerCase();
+    const matchesSearch =
+      !logSearch ||
+      log.performedBy.toLowerCase().includes(searchLower) ||
+      (log.performedByRole && log.performedByRole.toLowerCase().includes(searchLower)) ||
+      log.details.toLowerCase().includes(searchLower) ||
+      log.action.toLowerCase().includes(searchLower);
+
+    const matchesAction = logAction === 'All' || log.action === logAction;
+    const matchesRole = logRole === 'All' || log.performedByRole === logRole;
+
+    return matchesSearch && matchesAction && matchesRole;
+  });
+
+  const totalLogPages = Math.ceil(filteredLogs.length / logsPerPage);
+  const startIndex = (logPage - 1) * logsPerPage;
+  const paginatedLogs = filteredLogs.slice(startIndex, startIndex + logsPerPage);
+
+  const formatLogTimestamp = (ts: any) => {
+    if (!ts) return 'Just now';
+    if (ts.seconds) {
+      return new Date(ts.seconds * 1000).toLocaleString();
+    }
+    if (ts.toDate) {
+      return ts.toDate().toLocaleString();
+    }
+    return new Date(ts).toLocaleString();
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       
@@ -237,7 +335,34 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Navigation Tabs */}
+      <div className="flex border-b border-zinc-800/80">
+        <button
+          onClick={() => { setAdminTab('users'); setError(null); setSuccess(null); }}
+          className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
+            adminTab === 'users'
+              ? 'border-indigo-500 text-indigo-400 font-bold bg-indigo-500/5'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>User & Directory Management</span>
+        </button>
+        <button
+          onClick={() => { setAdminTab('logs'); setError(null); setSuccess(null); setLogPage(1); }}
+          className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
+            adminTab === 'logs'
+              ? 'border-indigo-500 text-indigo-400 font-bold bg-indigo-500/5'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <RefreshCw className={`w-4 h-4 ${loadingLogs ? 'animate-spin text-indigo-400' : ''}`} />
+          <span>System Activity Audit Log</span>
+        </button>
+      </div>
+
+      {adminTab === 'users' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in-50 duration-200">
         
         {/* User Registration Card */}
         <div className="lg:col-span-1 bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 shadow-xl h-fit backdrop-blur-xs">
@@ -409,7 +534,25 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
             </button>
           </div>
 
+          {usersFetchError && (
+            <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/50 text-red-400 text-xs flex items-start space-x-3 leading-relaxed font-mono m-4">
+              <AlertCircle className="w-4.5 h-4.5 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <strong>Authorization Error:</strong> {usersFetchError}
+                <div className="mt-2">
+                  <button 
+                    onClick={fetchUsers}
+                    className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded text-red-400 font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    Retry Loading Users
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Directory table */}
+          {!usersFetchError && (
           <div className="overflow-y-auto flex-1 min-h-0 border border-zinc-800/80 rounded-xl bg-zinc-950/20">
             {loadingUsers && users.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-2 font-mono">
@@ -481,9 +624,219 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
               </table>
             )}
           </div>
+          )}
         </div>
 
       </div>
+      ) : (
+        /* Render System Activity Logs tab contents */
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 shadow-xl space-y-4 animate-in fade-in-50 duration-200 backdrop-blur-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-800/80">
+            <div className="flex items-center space-x-2.5">
+              <div className="bg-indigo-500/10 text-indigo-400 p-2 rounded-lg border border-indigo-500/20">
+                <RefreshCw className={`w-5 h-5 ${loadingLogs ? 'animate-spin' : ''}`} />
+              </div>
+              <div>
+                <h2 className="font-bold text-zinc-100 text-sm tracking-wide">System Activity Audit Log</h2>
+                <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Immutable tracking of downloads, deletes, uploads, and archiving of files</p>
+              </div>
+            </div>
+            <button
+              onClick={fetchLogs}
+              disabled={loadingLogs}
+              className="px-3 py-1.5 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 rounded-lg text-xs text-zinc-400 hover:text-white flex items-center space-x-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <RefreshCw className={`w-3 h-3 ${loadingLogs ? 'animate-spin' : ''}`} />
+              <span>Refresh Logs</span>
+            </button>
+          </div>
+
+          {/* Log Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Search filter */}
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
+                <Search className="w-4 h-4" />
+              </span>
+              <input
+                type="text"
+                value={logSearch}
+                onChange={(e) => { setLogSearch(e.target.value); setLogPage(1); }}
+                placeholder="Search logs by file or performer..."
+                className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-xs focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-650"
+              />
+            </div>
+
+            {/* Action filter */}
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
+                <Filter className="w-3.5 h-3.5" />
+              </span>
+              <select
+                value={logAction}
+                onChange={(e) => { setLogAction(e.target.value); setLogPage(1); }}
+                className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-350 text-xs focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+              >
+                <option value="All">All Logged Actions</option>
+                <option value="Upload">Upload Action</option>
+                <option value="Download">Download Action</option>
+                <option value="Delete">Delete Action</option>
+                <option value="Archive">Archive Action</option>
+                <option value="Restore">Restore Action</option>
+              </select>
+            </div>
+
+            {/* Role Filter */}
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
+                <Shield className="w-3.5 h-3.5" />
+              </span>
+              <select
+                value={logRole}
+                onChange={(e) => { setLogRole(e.target.value); setLogPage(1); }}
+                className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-350 text-xs focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+              >
+                <option value="All">All User Roles</option>
+                <option value="Employee">Employee (Form Uploader)</option>
+                <option value="Manager">Manager (Viewer / Compiler)</option>
+                <option value="Admin">Admin (Full System Manager)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Reset Filters Prompt */}
+          {(logSearch || logAction !== 'All' || logRole !== 'All') && (
+            <div className="flex items-center justify-between px-3.5 py-2 bg-zinc-950 border border-zinc-850 rounded-lg text-xs">
+              <span className="text-zinc-450 font-medium font-sans">
+                Active filters matching <strong className="text-indigo-400 font-mono font-bold">{filteredLogs.length}</strong> activity log entries
+              </span>
+              <button
+                onClick={() => { setLogSearch(''); setLogAction('All'); setLogRole('All'); setLogPage(1); }}
+                className="text-indigo-400 hover:text-indigo-300 font-bold font-sans cursor-pointer transition-colors"
+              >
+                Clear Filters
+              </button>
+            </div>
+          )}
+
+          {/* Logs Table */}
+          {logsFetchError && (
+            <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/50 text-red-400 text-xs flex items-start space-x-3 leading-relaxed font-mono">
+              <AlertCircle className="w-4.5 h-4.5 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <strong>Authorization Error:</strong> {logsFetchError}
+                <div className="mt-2">
+                  <button 
+                    onClick={fetchLogs}
+                    className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded text-red-400 font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    Retry Loading Logs
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!logsFetchError && loadingLogs && activityLogs.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center text-zinc-500 space-y-2 font-mono">
+              <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+              <span className="text-xs font-semibold">Retrieving activity logs from Firestore...</span>
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center text-zinc-500 px-6 text-center">
+              <AlertCircle className="w-12 h-12 text-zinc-700 mb-2" />
+              <span className="text-sm font-semibold text-zinc-350">No Activity Logs Found</span>
+              <p className="text-xs text-zinc-550 mt-1.5 max-w-sm mx-auto leading-relaxed font-sans">
+                No activity records matched the specified filter criteria. Modify your keyword search or filter presets.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto border border-zinc-800 rounded-xl bg-zinc-950/20">
+                <table className="w-full text-left border-collapse min-w-[700px]">
+                  <thead>
+                    <tr className="bg-zinc-950 border-b border-zinc-800 text-zinc-500 font-bold text-[10px] uppercase tracking-widest font-mono">
+                      <th className="py-3 px-4">Timestamp</th>
+                      <th className="py-3 px-4">Action</th>
+                      <th className="py-3 px-4">Performed By</th>
+                      <th className="py-3 px-4">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-850 text-xs text-zinc-300 font-sans">
+                    {paginatedLogs.map((log) => {
+                      let actionBadgeColor = 'bg-zinc-950 text-zinc-400 border-zinc-800';
+                      if (log.action === 'Upload') {
+                        actionBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                      } else if (log.action === 'Delete') {
+                        actionBadgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+                      } else if (log.action === 'Download') {
+                        actionBadgeColor = 'bg-sky-500/10 text-sky-400 border-sky-500/20';
+                      } else if (log.action === 'Archive') {
+                        actionBadgeColor = 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20';
+                      } else if (log.action === 'Restore') {
+                        actionBadgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+                      }
+
+                      return (
+                        <tr key={log.id} className="hover:bg-zinc-900/10 transition-colors">
+                          <td className="py-3.5 px-4 font-mono text-[11px] text-zinc-500 whitespace-nowrap">
+                            {formatLogTimestamp(log.createdAt)}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 text-[10px] font-bold font-mono tracking-wider rounded-md border ${actionBadgeColor}`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="block font-sans font-semibold text-zinc-100">{log.performedBy}</span>
+                            <span className="text-[10px] font-mono text-zinc-500">{log.performedByRole || 'System'}</span>
+                          </td>
+                          <td className="py-3.5 px-4 font-sans text-zinc-400 max-w-md break-words leading-relaxed">
+                            {log.details}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Log Pagination Bar */}
+              {totalLogPages > 1 && (
+                <div className="bg-zinc-950 px-6 py-4 border border-zinc-850 rounded-xl flex items-center justify-between">
+                  <div className="text-xs text-zinc-500 font-semibold font-sans">
+                    Showing logs <strong className="text-zinc-300 font-bold font-mono">{startIndex + 1}</strong> to{' '}
+                    <strong className="text-zinc-300 font-bold font-mono">
+                      {Math.min(startIndex + logsPerPage, filteredLogs.length)}
+                    </strong>{' '}
+                    of <strong className="text-zinc-300 font-bold font-mono">{filteredLogs.length}</strong> total matched entries
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setLogPage(prev => Math.max(prev - 1, 1))}
+                      disabled={logPage === 1}
+                      className="p-1 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs font-semibold text-zinc-400 px-1 font-mono">
+                      {logPage} / {totalLogPages}
+                    </span>
+                    <button
+                      onClick={() => setLogPage(prev => Math.min(prev + 1, totalLogPages))}
+                      disabled={logPage === totalLogPages}
+                      className="p-1 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Edit User Modal Overlay */}
       {editingUser && (

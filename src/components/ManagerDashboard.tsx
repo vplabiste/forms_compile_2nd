@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth, collection, query, getDocs, orderBy, runTransaction, doc, serverTimestamp, updateDoc } from '../lib/firebaseClient';
+import { db, auth, collection, query, getDocs, orderBy, runTransaction, doc, serverTimestamp, updateDoc, deleteDoc, addDoc } from '../lib/firebaseClient';
 import { Download, Search, Edit2, CheckSquare, Square, FileArchive, Loader2, AlertCircle, CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Filter, FileText, Upload, Cloud, Plus, Trash2, Layers, Check, X } from 'lucide-react';
-import { FormRecord, UserProfile, DocumentTemplate } from '../types';
+import { FormRecord, UserProfile, DocumentTemplate, ActivityLog } from '../types';
 import JSZip from 'jszip';
 
 interface ManagerDashboardProps {
@@ -16,6 +16,18 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUploaderFilter, setSelectedUploaderFilter] = useState('');
+  const [selectedFormFilter, setSelectedFormFilter] = useState('');
+  const [viewTab, setViewTab] = useState<'active' | 'archived'>('active');
+
+  // Archive prompt popup states
+  const [showArchivePrompt, setShowArchivePrompt] = useState(false);
+  const [downloadedFormIds, setDownloadedFormIds] = useState<string[]>([]);
+
+  // File deletion triple-check states
+  const [formToDelete, setFormToDelete] = useState<FormRecord | null>(null);
+  const [deleteStage, setDeleteStage] = useState<number>(0); // 0 = closed, 1 = stage 1, 2 = stage 2, 3 = stage 3
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeletingForm, setIsDeletingForm] = useState(false);
 
   // Selection state
   const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
@@ -36,6 +48,8 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
   // --- DOCUMENT TEMPLATE STATES ---
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [templateFetchError, setTemplateFetchError] = useState<string | null>(null);
+  const [formFetchError, setFormFetchError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Create template form states
@@ -180,8 +194,11 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
         });
       }
 
+      let finalSystemName = '';
+
       await runTransaction(db, async (transaction) => {
-        const counterRef = doc(db, 'counters', 'global');
+        const formattedFormInitials = formInitials.trim().toUpperCase();
+        const counterRef = doc(db, 'counters', formattedFormInitials.toLowerCase());
         const counterSnap = await transaction.get(counterRef);
 
         let currentCount = 1000;
@@ -198,8 +215,8 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
 
         const fileExtension = file.name.split('.').pop() || 'pdf';
         const formattedUploaderInitials = uploaderInitials.trim().toUpperCase();
-        const formattedFormInitials = formInitials.trim().toUpperCase();
         const systemName = `${formattedUploaderInitials}_${formattedFormInitials}_${nextCount}.${fileExtension}`;
+        finalSystemName = systemName;
 
         const formsCollectionRef = collection(db, 'forms');
         const newFormDocRef = doc(formsCollectionRef);
@@ -217,6 +234,19 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
           createdAt: serverTimestamp(),
         });
       });
+
+      // Add activity log
+      try {
+        await addDoc(collection(db, 'logs'), {
+          action: 'Upload',
+          performedBy: user?.name || user?.email || 'Manager',
+          performedByRole: user?.role || 'Manager',
+          details: `Manager uploaded file "${finalSystemName}" (Original: "${file.name}")`,
+          createdAt: serverTimestamp()
+        });
+      } catch (logErr) {
+        console.error('Failed to write activity log:', logErr);
+      }
 
       setUploadSuccess('Form successfully uploaded, registered, and sequenced!');
       setFile(null);
@@ -253,6 +283,7 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
 
   const fetchTemplates = async () => {
     setLoadingTemplates(true);
+    setTemplateFetchError(null);
     try {
       const q = query(collection(db, 'document_templates'), orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
@@ -261,8 +292,26 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
         fetched.push(doc.data() as DocumentTemplate);
       });
       setTemplates(fetched);
-    } catch (err) {
-      console.error('Error fetching templates:', err);
+    } catch (err: any) {
+      const isPermissionDenied = err.code === 'permission-denied' || 
+                                 (err.message && err.message.toLowerCase().includes('permission')) ||
+                                 JSON.stringify(err).toLowerCase().includes('permission');
+      
+      console.error('Error fetching templates:', {
+        error: err,
+        code: err.code,
+        message: err.message,
+        isPermissionDenied,
+        authUserId: user?.uid,
+        authUserEmail: user?.email,
+        path: 'document_templates'
+      });
+
+      if (isPermissionDenied) {
+        setTemplateFetchError('Missing or insufficient database permissions to fetch form templates. Please verify your manager role authorization.');
+      } else {
+        setTemplateFetchError('An error occurred while fetching form requirements: ' + (err.message || err));
+      }
     } finally {
       setLoadingTemplates(false);
     }
@@ -456,8 +505,8 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
   };
 
   const fetchForms = async () => {
-    setLoading(false);
     setLoading(true);
+    setFormFetchError(null);
     try {
       const q = query(collection(db, 'forms'), orderBy('sequenceNumber', 'desc'));
       const snapshot = await getDocs(q);
@@ -466,8 +515,26 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
         fetchedForms.push(doc.data() as FormRecord);
       });
       setForms(fetchedForms);
-    } catch (err) {
-      console.error('Error fetching forms:', err);
+    } catch (err: any) {
+      const isPermissionDenied = err.code === 'permission-denied' || 
+                                 (err.message && err.message.toLowerCase().includes('permission')) ||
+                                 JSON.stringify(err).toLowerCase().includes('permission');
+      
+      console.error('Error fetching forms:', {
+        error: err,
+        code: err.code,
+        message: err.message,
+        isPermissionDenied,
+        authUserId: user?.uid,
+        authUserEmail: user?.email,
+        path: 'forms'
+      });
+
+      if (isPermissionDenied) {
+        setFormFetchError('Missing or insufficient database permissions to fetch form records. Please verify your manager role authorization.');
+      } else {
+        setFormFetchError('An error occurred while fetching forms: ' + (err.message || err));
+      }
     } finally {
       setLoading(false);
     }
@@ -535,6 +602,104 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
     }
   };
 
+  // Archive / unarchive individual forms
+  const handleToggleArchive = async (formId: string, currentArchivedState: boolean) => {
+    try {
+      const formDocRef = doc(db, 'forms', formId);
+      await updateDoc(formDocRef, {
+        archived: !currentArchivedState
+      });
+      
+      const formObj = forms.find((f) => f.id === formId);
+      const docName = formObj ? (formObj.systemName || formObj.originalName) : formId;
+
+      // Add activity log
+      try {
+        await addDoc(collection(db, 'logs'), {
+          action: !currentArchivedState ? 'Archive' : 'Restore',
+          performedBy: user?.name || user?.email || 'Manager',
+          performedByRole: user?.role || 'Manager',
+          details: `${!currentArchivedState ? 'Archived' : 'restored to active'} document "${docName}"`,
+          createdAt: serverTimestamp()
+        });
+      } catch (logErr) {
+        console.error('Failed to write activity log:', logErr);
+      }
+
+      // Update local state
+      setForms(
+        forms.map((f) =>
+          f.id === formId ? { ...f, archived: !currentArchivedState } : f
+        )
+      );
+      
+      setSuccess(`Document successfully ${!currentArchivedState ? 'archived' : 'restored to active'}.`);
+    } catch (err: any) {
+      console.error('Error toggling archive status:', err);
+      setError('Could not update archive status in Firestore.');
+    }
+  };
+
+  // Start delete process (Stage 1)
+  const startDeleteForm = (form: FormRecord) => {
+    setFormToDelete(form);
+    setDeleteStage(1);
+    setDeleteConfirmText('');
+    setError(null);
+    setSuccess(null);
+  };
+
+  // Perform actual deletion (Stage 3 execution)
+  const executeDeleteForm = async () => {
+    if (!formToDelete) return;
+    if (deleteConfirmText !== 'delete files') {
+      setError("Authorization text does not match 'delete files'.");
+      return;
+    }
+
+    setIsDeletingForm(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const formDocRef = doc(db, 'forms', formToDelete.id);
+      await deleteDoc(formDocRef);
+
+      // Add activity log
+      try {
+        await addDoc(collection(db, 'logs'), {
+          action: 'Delete',
+          performedBy: user?.name || user?.email || 'Manager',
+          performedByRole: user?.role || 'Manager',
+          details: `Permanently deleted document "${formToDelete.systemName}" (Original: "${formToDelete.originalName}")`,
+          createdAt: serverTimestamp()
+        });
+      } catch (logErr) {
+        console.error('Failed to write activity log:', logErr);
+      }
+
+      setSuccess(`Document "${formToDelete.systemName}" was permanently deleted.`);
+      
+      // Update local state
+      setForms(forms.filter((f) => f.id !== formToDelete.id));
+      
+      // Remove from selection state if present
+      const nextSelected = new Set(selectedFormIds);
+      nextSelected.delete(formToDelete.id);
+      setSelectedFormIds(nextSelected);
+
+      // Close modal
+      setFormToDelete(null);
+      setDeleteStage(0);
+      setDeleteConfirmText('');
+    } catch (err: any) {
+      console.error('Error deleting document:', err);
+      setError('Failed to delete document: ' + err.message);
+    } finally {
+      setIsDeletingForm(false);
+    }
+  };
+
   // Compile ZIP and download
   const handleCompileZip = async () => {
     if (selectedFormIds.size === 0) return;
@@ -593,7 +758,23 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
+      // Add activity log
+      try {
+        const fileNames = formsToZip.map((f) => f.systemName).join(', ');
+        await addDoc(collection(db, 'logs'), {
+          action: 'Download',
+          performedBy: user?.name || user?.email || 'Manager',
+          performedByRole: user?.role || 'Manager',
+          details: `Compiled and downloaded ZIP containing ${formsToZip.length} forms: [${fileNames}]`,
+          createdAt: serverTimestamp()
+        });
+      } catch (logErr) {
+        console.error('Failed to write activity log:', logErr);
+      }
+
       setSuccess(`Successfully compiled and downloaded archive containing ${formsToZip.length} forms!`);
+      setDownloadedFormIds(formsToZip.map((f) => f.id));
+      setShowArchivePrompt(true);
       setSelectedFormIds(new Set()); // Reset selections
     } catch (zipErr: any) {
       console.error('ZIP generation error:', zipErr);
@@ -618,12 +799,24 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
       !selectedUploaderFilter ||
       f.uploaderInitials.toUpperCase() === selectedUploaderFilter.toUpperCase();
 
-    return matchesQuery && matchesUploader;
+    const matchesForm =
+      !selectedFormFilter ||
+      f.formInitials.toUpperCase() === selectedFormFilter.toUpperCase();
+
+    const matchesArchive =
+      viewTab === 'archived' ? !!f.archived : !f.archived;
+
+    return matchesQuery && matchesUploader && matchesForm && matchesArchive;
   });
 
   // Extract unique uploaders initials for filters
   const uniqueUploaders = Array.from(
     new Set(forms.map((f) => f.uploaderInitials.toUpperCase()))
+  ).sort();
+
+  // Extract unique form initials for filters
+  const uniqueForms = Array.from(
+    new Set(forms.map((f) => f.formInitials.toUpperCase()))
   ).sort();
 
   // Paginated calculations
@@ -717,8 +910,26 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
         </div>
       )}
 
+      {/* Template Fetch Error */}
+      {templateFetchError && (
+        <div className="p-4 rounded-xl bg-red-950/20 border border-red-900/50 text-red-400 text-xs flex items-start space-x-3 leading-relaxed font-mono">
+          <AlertCircle className="w-4.5 h-4.5 text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <strong>Authorization Error:</strong> {templateFetchError}
+            <div className="mt-2">
+              <button 
+                onClick={fetchTemplates}
+                className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded text-red-400 font-bold uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                Retry Loading Templates
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Published Form Requirements Cards Grid */}
-      {templates.filter(t => t.published).length > 0 && (
+      {!templateFetchError && templates.filter(t => t.published).length > 0 && (
         <div className="space-y-4 pt-2">
           <div className="flex items-center space-x-2">
             <div className="bg-indigo-500/10 text-indigo-400 p-1.5 rounded-lg border border-indigo-500/25">
@@ -1142,54 +1353,120 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
         {/* Manager table/filters side column */}
         <div className="lg:col-span-3 space-y-6">
 
-          {/* Filters and search box */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        
-        {/* Search */}
-        <div className="md:col-span-3 relative">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-zinc-500 pointer-events-none">
-            <Search className="w-4.5 h-4.5" />
-          </span>
-          <input
-            type="text"
-            placeholder="Search files by system name, initials, original name, comments..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
-          />
-        </div>
+          {/* Active / Archived Document Tabs */}
+          <div className="flex border-b border-zinc-800/80">
+            <button
+              onClick={() => { setViewTab('active'); setCurrentPage(1); }}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
+                viewTab === 'active'
+                  ? 'border-indigo-500 text-indigo-400 font-bold bg-indigo-500/5'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Active Documents ({forms.filter(f => !f.archived).length})</span>
+            </button>
+            <button
+              onClick={() => { setViewTab('archived'); setCurrentPage(1); }}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center space-x-2 ${
+                viewTab === 'archived'
+                  ? 'border-indigo-500 text-indigo-400 font-bold bg-indigo-500/5'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <FileArchive className="w-4 h-4" />
+              <span>Archived Documents ({forms.filter(f => !!f.archived).length})</span>
+            </button>
+          </div>
 
-        {/* Uploader Initials dropdown */}
-        <div className="relative">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-zinc-500 pointer-events-none">
-            <Filter className="w-4 h-4" />
-          </span>
-          <select
-            value={selectedUploaderFilter}
-            onChange={(e) => {
-              setSelectedUploaderFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl text-zinc-300 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all cursor-pointer appearance-none"
-          >
-            <option value="">Filter by Uploader (All)</option>
-            {uniqueUploaders.map((init) => (
-              <option key={init} value={init}>
-                Uploader: {init}
-              </option>
-            ))}
-          </select>
-        </div>
+              {/* Filters and search box */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            
+            {/* Search */}
+            <div className="md:col-span-2 relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-zinc-500 pointer-events-none">
+                <Search className="w-4.5 h-4.5" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search files by system name, initials, original name, comments..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
+              />
+            </div>
 
-      </div>
+            {/* Uploader Initials dropdown */}
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-zinc-500 pointer-events-none">
+                <Filter className="w-4 h-4" />
+              </span>
+              <select
+                value={selectedUploaderFilter}
+                onChange={(e) => {
+                  setSelectedUploaderFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl text-zinc-300 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all cursor-pointer appearance-none"
+              >
+                <option value="">Uploader (All)</option>
+                {uniqueUploaders.map((init) => (
+                  <option key={init} value={init}>
+                    Uploader: {init}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Form Initials dropdown */}
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-zinc-500 pointer-events-none">
+                <Layers className="w-4 h-4" />
+              </span>
+              <select
+                value={selectedFormFilter}
+                onChange={(e) => {
+                  setSelectedFormFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/40 border border-zinc-800/80 rounded-xl text-zinc-300 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all cursor-pointer appearance-none"
+              >
+                <option value="">Form (All)</option>
+                {uniqueForms.map((init) => (
+                  <option key={init} value={init}>
+                    Form: {init}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+          </div>
 
       {/* Datatable Card */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl shadow-xl overflow-hidden backdrop-blur-xs">
+        
+        {formFetchError && (
+          <div className="p-4 bg-red-950/20 border-b border-red-900/50 text-red-400 text-xs flex items-start space-x-3 leading-relaxed font-mono">
+            <AlertCircle className="w-4.5 h-4.5 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <strong>Authorization Error:</strong> {formFetchError}
+              <div className="mt-2">
+                <button 
+                  onClick={fetchForms}
+                  className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded text-red-400 font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Retry Loading Forms
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
-          {loading && forms.length === 0 ? (
+          {!formFetchError && loading && forms.length === 0 ? (
             <div className="py-20 flex flex-col items-center justify-center text-zinc-500 space-y-2 font-mono">
               <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
               <span className="text-xs font-semibold">Retrieving files from Firestore database...</span>
@@ -1313,6 +1590,30 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
                             title="Edit Comment"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleToggleArchive(form.id, !!form.archived)}
+                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer bg-zinc-950/40 ${
+                              form.archived
+                                ? 'border-emerald-800 text-emerald-400 hover:bg-emerald-950/20 hover:text-emerald-300'
+                                : 'border-zinc-800 text-zinc-400 hover:text-amber-400 hover:border-amber-500/30'
+                            }`}
+                            title={form.archived ? "Restore to Active" : "Archive Document"}
+                          >
+                            {form.archived ? (
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            ) : (
+                              <FileArchive className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => startDeleteForm(form)}
+                            className="p-1.5 hover:bg-red-950/40 rounded-lg text-zinc-400 hover:text-red-400 hover:border-red-500/30 border border-zinc-800 bg-zinc-950/40 transition-colors cursor-pointer"
+                            title="Delete Document permanently (Triple-Check)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -1642,6 +1943,250 @@ export default function ManagerDashboard({ user }: ManagerDashboardProps) {
                       )}
                     </button>
                   </div>
+                </div>
+              </>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* Archive Downloaded Forms Dialog */}
+      {showArchivePrompt && downloadedFormIds.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4 text-left">
+            <div className="flex items-start space-x-3">
+              <div className="bg-indigo-500/10 text-indigo-400 p-2 rounded-lg border border-indigo-500/20 shrink-0 mt-0.5">
+                <FileArchive className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-100 font-sans">Archive Compiled Documents?</h3>
+                <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                  You successfully compiled and downloaded <span className="text-zinc-200 font-semibold">{downloadedFormIds.length}</span> documents.
+                </p>
+              </div>
+            </div>
+
+            <div className="text-xs text-zinc-400 leading-relaxed bg-zinc-950/50 p-3.5 rounded-lg border border-zinc-850 space-y-2">
+              <p>
+                Would you like to archive these compiled documents now?
+              </p>
+              <p className="text-[11px] text-zinc-500 italic">
+                Archived documents are hidden from your main "Active Documents" list but remain fully safe and accessible anytime from the "Archived Documents" view.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2.5 pt-2">
+              <button
+                onClick={() => {
+                  setShowArchivePrompt(false);
+                  setDownloadedFormIds([]);
+                }}
+                className="px-4 py-2 bg-zinc-950 hover:bg-zinc-855 border border-zinc-850 text-zinc-400 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                No, Keep Active
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    setShowArchivePrompt(false);
+                    setLoading(true);
+                    
+                    const archivedForms = forms.filter((f) => downloadedFormIds.includes(f.id));
+                    const fileNames = archivedForms.map((f) => f.systemName).join(', ');
+
+                    await Promise.all(
+                      downloadedFormIds.map((id) =>
+                        updateDoc(doc(db, 'forms', id), { archived: true })
+                      )
+                    );
+
+                    // Add activity log
+                    try {
+                      await addDoc(collection(db, 'logs'), {
+                        action: 'Archive',
+                        performedBy: user?.name || user?.email || 'Manager',
+                        performedByRole: user?.role || 'Manager',
+                        details: `Archived ${downloadedFormIds.length} compiled documents after download: [${fileNames}]`,
+                        createdAt: serverTimestamp()
+                      });
+                    } catch (logErr) {
+                      console.error('Failed to write activity log:', logErr);
+                    }
+
+                    setSuccess(`Successfully archived ${downloadedFormIds.length} compiled forms!`);
+                    setDownloadedFormIds([]);
+                    fetchForms();
+                  } catch (err: any) {
+                    console.error('Error archiving downloaded forms:', err);
+                    setError('Archiving failed: ' + err.message);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-indigo-600/15 hover:shadow-indigo-600/25 transition-all flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Yes, Archive Them</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Deletion Triple-Check Dialog */}
+      {deleteStage > 0 && formToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
+          <div className="bg-zinc-900 border border-red-900/30 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4 text-left animate-in fade-in-50 zoom-in-95 duration-150">
+            
+            {/* STAGE 1: Confirm Permanent Deletion */}
+            {deleteStage === 1 && (
+              <>
+                <div className="flex items-start space-x-3">
+                  <div className="bg-red-500/10 text-red-400 p-2.5 rounded-xl border border-red-500/20 shrink-0 mt-0.5">
+                    <Trash2 className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-100 font-sans">Delete Document - Stage 1 of 3</h3>
+                    <p className="text-xs text-red-400 font-semibold mt-1">Warning: Destructive action</p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-xl border border-zinc-850 space-y-2">
+                  <p>
+                    Are you sure you want to delete <span className="text-zinc-100 font-bold font-mono text-[11px] bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">{formToDelete.systemName || formToDelete.systemFileName}</span>?
+                  </p>
+                  <p className="text-zinc-400">
+                    This will permanently delete the document from the database. It cannot be recovered.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end space-x-2.5 pt-2">
+                  <button
+                    onClick={() => {
+                      setDeleteStage(0);
+                      setFormToDelete(null);
+                    }}
+                    className="px-4 py-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-400 rounded-xl text-xs transition-colors cursor-pointer font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => setDeleteStage(2)}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-red-600/15 hover:shadow-red-600/25 transition-all flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <span>Yes, Continue to Stage 2</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* STAGE 2: Triple Check Warning */}
+            {deleteStage === 2 && (
+              <>
+                <div className="flex items-start space-x-3">
+                  <div className="bg-amber-500/10 text-amber-400 p-2.5 rounded-xl border border-amber-500/20 shrink-0 mt-0.5">
+                    <AlertCircle className="w-5 h-5 animate-bounce" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-100 font-sans">Double Check - Stage 2 of 3</h3>
+                    <p className="text-xs text-amber-400 font-semibold mt-1">Confirming cascading consequences</p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-xl border border-zinc-850 space-y-2">
+                  <p className="text-amber-300 font-medium">
+                    Please consider carefully before proceeding:
+                  </p>
+                  <p className="text-zinc-400">
+                    Deleting this document will remove it from all compile filters, search results, and manager reviews. No employee or manager will ever be able to access it again.
+                  </p>
+                  <p className="text-zinc-500 italic text-[11px]">
+                    Are you absolutely positive you want to destroy this document?
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end space-x-2.5 pt-2">
+                  <button
+                    onClick={() => {
+                      setDeleteStage(0);
+                      setFormToDelete(null);
+                    }}
+                    className="px-4 py-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-400 rounded-xl text-xs transition-colors cursor-pointer font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => setDeleteStage(3)}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-amber-600/15 hover:shadow-amber-600/25 transition-all flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <span>Yes, I Am Certain</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* STAGE 3: Type Confirm Text */}
+            {deleteStage === 3 && (
+              <>
+                <div className="flex items-start space-x-3">
+                  <div className="bg-red-500/15 text-red-500 p-2.5 rounded-xl border border-red-500/30 shrink-0 mt-0.5">
+                    <Trash2 className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-100 font-sans">Final Verification - Stage 3 of 3</h3>
+                    <p className="text-xs text-red-500 font-semibold mt-1">Authorization required</p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-xl border border-zinc-850 space-y-3">
+                  <p>
+                    To finalize the deletion of <span className="font-semibold text-zinc-100 font-mono text-[11px]">{formToDelete.systemName || formToDelete.systemFileName}</span>, please type <strong className="text-red-400 select-all font-mono font-bold bg-red-950/30 px-1 py-0.5 rounded border border-red-900/30">delete files</strong> in the field below:
+                  </p>
+                  
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder="Type 'delete files' here"
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-200 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/30 transition-all font-mono placeholder:text-zinc-600"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="flex items-center justify-end space-x-2.5 pt-2">
+                  <button
+                    onClick={() => {
+                      setDeleteStage(0);
+                      setFormToDelete(null);
+                    }}
+                    className="px-4 py-2 bg-zinc-950 hover:bg-zinc-850 border border-zinc-850 text-zinc-400 rounded-xl text-xs transition-colors cursor-pointer font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={executeDeleteForm}
+                    disabled={deleteConfirmText !== 'delete files' || isDeletingForm}
+                    className={`px-4 py-2 text-white font-bold rounded-xl text-xs transition-all flex items-center space-x-1.5 cursor-pointer ${
+                      deleteConfirmText === 'delete files' && !isDeletingForm
+                        ? 'bg-red-600 hover:bg-red-500 shadow-lg shadow-red-600/15 hover:shadow-red-600/25 animate-pulse'
+                        : 'bg-zinc-800 text-zinc-500 border border-zinc-850 cursor-not-allowed'
+                    }`}
+                  >
+                    {isDeletingForm ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Deleting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Permanently Delete</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </>
             )}
