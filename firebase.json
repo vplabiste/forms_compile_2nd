@@ -2,11 +2,13 @@
   "firestore": [
     {
       "database": "ai-studio-formscollectcomp-4f108bee-3ab3-41a8-b6b6-c326d189add0",
-      "rules": "firestore.rules"
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
     },
     {
       "database": "(default)",
-      "rules": "firestore.rules"
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
     }
   ]
 }
