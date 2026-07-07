@@ -76,16 +76,16 @@ export default function ProfileInitialization({ user, onSuccess }: ProfileInitia
   };
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4 py-12 bg-[#09090b]">
-      <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xs">
+    <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4 py-12 bg-zinc-50 dark:bg-[#09090b]">
+      <div className="w-full max-w-md bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xs">
         
         {/* Header Decors */}
-        <div className="bg-indigo-600/10 border-b border-zinc-800/80 px-6 py-8 text-center text-zinc-100 relative">
+        <div className="bg-indigo-600/10 border-b border-zinc-200 dark:border-zinc-800/80 px-6 py-8 text-center text-zinc-900 dark:text-zinc-100 relative">
           <div className="mx-auto w-12 h-12 bg-indigo-600/20 border border-indigo-500/30 rounded-xl flex items-center justify-center mb-3">
             <User className="w-6 h-6 text-indigo-400" />
           </div>
-          <h2 className="text-xl font-bold tracking-tight text-zinc-100 font-sans">Initialize Profile</h2>
-          <p className="text-xs text-zinc-400 mt-1 max-w-xs mx-auto">
+          <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 font-sans">Initialize Profile</h2>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 max-w-xs mx-auto">
             Setup your signature initials for secure sequence tracking.
           </p>
         </div>
@@ -115,7 +115,7 @@ export default function ProfileInitialization({ user, onSuccess }: ProfileInitia
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+              <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
                 Full Name
               </label>
               <input
@@ -124,17 +124,17 @@ export default function ProfileInitialization({ user, onSuccess }: ProfileInitia
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Jane Doe"
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
+                className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
                 disabled={isLoading || !!success}
               />
             </div>
 
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest font-mono">
+                <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest font-mono">
                   Your Signature Initials
                 </label>
-                <span className="text-[10px] text-zinc-500 font-mono">2-3 letters</span>
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-500 font-mono">2-3 letters</span>
               </div>
               <input
                 type="text"
@@ -143,29 +143,29 @@ export default function ProfileInitialization({ user, onSuccess }: ProfileInitia
                 value={initials}
                 onChange={(e) => setInitials(e.target.value)}
                 placeholder="e.g. JD"
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm font-bold tracking-wider uppercase text-center focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600 font-mono"
+                className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm font-bold tracking-wider uppercase text-center focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600 font-mono"
                 disabled={isLoading || !!success}
               />
-              <p className="text-[10px] text-zinc-500 mt-1.5 leading-normal">
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-500 mt-1.5 leading-normal">
                 These initials will prefix all your submitted files, for example: <strong>{initials.toUpperCase() || 'JD'}_EXP_1001.pdf</strong>
               </p>
             </div>
 
-            <div className="border-t border-zinc-800/60 my-4 pt-4 space-y-4">
+            <div className="border-t border-zinc-200 dark:border-zinc-800/60 my-4 pt-4 space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
                   New Password (Optional)
                 </label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
-                    <Lock className="w-4 h-4 text-zinc-500" />
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500 dark:text-zinc-500">
+                    <Lock className="w-4 h-4 text-zinc-500 dark:text-zinc-500" />
                   </span>
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Leave blank to keep current"
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-650"
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-650"
                     disabled={isLoading || !!success}
                   />
                 </div>
@@ -173,12 +173,12 @@ export default function ProfileInitialization({ user, onSuccess }: ProfileInitia
 
               {password && (
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                  <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
                     Confirm New Password
                   </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
-                      <Lock className="w-4 h-4 text-zinc-500" />
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500 dark:text-zinc-500">
+                      <Lock className="w-4 h-4 text-zinc-500 dark:text-zinc-500" />
                     </span>
                     <input
                       type="password"
@@ -186,7 +186,7 @@ export default function ProfileInitialization({ user, onSuccess }: ProfileInitia
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Verify your new password"
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-650"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-650"
                       disabled={isLoading || !!success}
                     />
                   </div>
@@ -196,7 +196,7 @@ export default function ProfileInitialization({ user, onSuccess }: ProfileInitia
 
             <button
               type="submit"
-              className="w-full mt-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 flex items-center justify-center space-x-2 cursor-pointer"
+              className="w-full mt-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-zinc-950 dark:text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 flex items-center justify-center space-x-2 cursor-pointer"
               disabled={isLoading || !!success}
             >
               {isLoading ? (

@@ -139,19 +139,19 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12 bg-[#09090b]">
-      <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden transition-all duration-300 backdrop-blur-xs">
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12 bg-zinc-50 dark:bg-[#09090b]">
+      <div className="w-full max-w-md bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden transition-all duration-300 backdrop-blur-xs">
         
         {/* Header decoration */}
-        <div className="bg-indigo-600/10 border-b border-zinc-800/80 px-6 py-8 text-center text-zinc-100 relative">
+        <div className="bg-indigo-600/10 border-b border-zinc-200 dark:border-zinc-800/80 px-6 py-8 text-center text-zinc-900 dark:text-zinc-100 relative">
           <div className="absolute top-3 right-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-widest uppercase">
             v1.0
           </div>
           <div className="mx-auto w-12 h-12 bg-indigo-600/20 border border-indigo-500/30 rounded-xl flex items-center justify-center mb-3">
             <FileText className="w-6 h-6 text-indigo-400" />
           </div>
-          <h2 className="text-xl font-bold tracking-tight text-zinc-100">Forms Collect & Compile</h2>
-          <p className="text-xs text-zinc-400 mt-1 max-w-xs mx-auto">
+          <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Forms Collect & Compile</h2>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 max-w-xs mx-auto">
             {isSetupMode ? 'System Initialization Setup' : 'Role-Based Secure Document Gateway'}
           </p>
         </div>
@@ -180,11 +180,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
                   Admin Name
                 </label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500 dark:text-zinc-500">
                     <User className="w-4 h-4" />
                   </span>
                   <input
@@ -193,7 +193,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                     value={setupName}
                     onChange={(e) => setSetupName(e.target.value)}
                     placeholder="John Doe"
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
+                    className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
                     disabled={isLoading}
                   />
                 </div>
@@ -201,11 +201,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                  <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
                     Email Address
                   </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500 dark:text-zinc-500">
                       <Mail className="w-4 h-4" />
                     </span>
                     <input
@@ -214,14 +214,14 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                       value={setupEmail}
                       onChange={(e) => setSetupEmail(e.target.value)}
                       placeholder="admin@company.com"
-                      className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
+                      className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
                       disabled={isLoading}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                  <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
                     Initials
                   </label>
                   <input
@@ -231,18 +231,18 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                     value={setupInitials}
                     onChange={(e) => setSetupInitials(e.target.value)}
                     placeholder="JD"
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none text-center font-bold tracking-wider uppercase focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600 font-mono"
+                    className="w-full px-3 py-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none text-center font-bold tracking-wider uppercase focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600 font-mono"
                     disabled={isLoading}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
                   Secure Password
                 </label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500 dark:text-zinc-500">
                     <Lock className="w-4 h-4" />
                   </span>
                   <input
@@ -251,7 +251,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                     value={setupPassword}
                     onChange={(e) => setSetupPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
+                    className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
                     disabled={isLoading}
                   />
                 </div>
@@ -259,7 +259,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
               <button
                 type="submit"
-                className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-zinc-950 dark:text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 flex items-center justify-center space-x-2 cursor-pointer mt-2"
                 disabled={isLoading}
                 id="btn-submit-setup"
               >
@@ -280,11 +280,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             /* Standard Login Mode */
             <form onSubmit={handleLogin} className="space-y-4" id="form-login">
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
+                <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest mb-1.5 font-mono">
                   Email Address
                 </label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500 dark:text-zinc-500">
                     <Mail className="w-4 h-4" />
                   </span>
                   <input
@@ -293,7 +293,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="name@company.com"
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
+                    className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
                     disabled={isLoading}
                   />
                 </div>
@@ -301,12 +301,12 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
               <div>
                 <div className="flex justify-between items-center mb-1.5">
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest font-mono">
+                  <label className="block text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest font-mono">
                     Password
                   </label>
                 </div>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-500 dark:text-zinc-500">
                     <Lock className="w-4 h-4" />
                   </span>
                   <input
@@ -315,7 +315,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
+                    className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-800 dark:text-zinc-200 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all placeholder:text-zinc-600"
                     disabled={isLoading}
                   />
                 </div>
@@ -323,7 +323,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
               <button
                 type="submit"
-                className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-zinc-950 dark:text-white font-bold rounded-lg text-sm transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/25 flex items-center justify-center space-x-2 cursor-pointer mt-2"
                 disabled={isLoading}
                 id="btn-submit-login"
               >
